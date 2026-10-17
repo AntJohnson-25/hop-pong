@@ -28,17 +28,20 @@ HUD.hint = function (text) { const e = $("hint"); if (!text) { e.className = "hi
 HUD.wait = function (text) { const e = $("wait"); e.hidden = !text; if (text) e.textContent = text; };
 HUD.scale = function (s) { $("score").style.transform = "scale(" + s + ")"; $("score").style.transformOrigin = "left top"; };
 
-// names: { p: "Ann & Bob", c: "Tasha" }, sc: [p, c], serverSide: "p"|"c", target
-HUD.score = function (names, sc, serverSide, target, mySide) {
+// names: { p: "Ann & Bob", c: "Tasha" }, sc: [p, c], serverSide: "p"|"c", target, table: number
+// shown when more than one table is in play (0 = don't show)
+HUD.score = function (names, sc, serverSide, target, mySide, table) {
   $("nameP").textContent = names.p; $("nameC").textContent = names.c;
   $("valP").textContent = sc[0]; $("valC").textContent = sc[1];
   $("rowP").classList.toggle("serving", serverSide === "p"); $("rowC").classList.toggle("serving", serverSide === "c");
   const dz = sc[0] >= target - 1 && sc[1] >= target - 1;
   const gp = Math.max(sc[0], sc[1]) >= target - 1 && !dz;
-  $("sinfo").textContent = dz ? t("deuce") : gp ? t("gamePoint") : t("firstTo", target);
+  const info = dz ? t("deuce") : gp ? t("gamePoint") : t("firstTo", target);
+  $("sinfo").textContent = table ? t("table", table) + "  ·  " + info : info;
   void mySide;
 };
 
+// ctx: { mySide, myId, tour, busy (tables still playing) }
 HUD.overlays = function (ui, ctx) {
   const br = $("bracket"), rs = $("result");
   br.hidden = rs.hidden = true;
@@ -53,13 +56,15 @@ HUD.overlays = function (ui, ctx) {
     $("resAgain").textContent = t("again"); $("resLeave").textContent = t("leave");
     $("resAgain").hidden = false;
     rs.hidden = false;
-  } else if (ui.ph === "bracket" || ui.ph === "done") {
-    const tour = ui.tour;
+  } else if ((ui.ph === "bracket" || ui.ph === "done") && ctx.tour) {
+    const tour = ctx.tour;
     $("brTitle").textContent = ui.ph === "done" && tour.champion ? t("champion", T.entrantName(tour, tour.champion)) : t("bracket");
     const grid = $("brGrid"); grid.innerHTML = "";
-    for (let r = 0; r < T.ROUNDS.length; r++) {
+    const rounds = T.roundsOf(tour), names = t("round");
+    grid.classList.toggle("big", rounds.length > 3);
+    for (let r = 0; r < rounds.length; r++) {
       const col = document.createElement("div"); col.className = "bcol";
-      const h = document.createElement("h3"); h.textContent = t("round")[r].toUpperCase(); col.append(h);
+      const h = document.createElement("h3"); h.textContent = names[names.length - rounds.length + r].toUpperCase(); col.append(h);
       T.matches(tour, r).forEach((m) => {
         const box = document.createElement("div"); box.className = "bm" + (!m.res && m.a && m.b && r === tour.round && (m.a.human || m.b.human) ? " live" : "");
         [m.a, m.b].forEach((e, i) => {
@@ -77,8 +82,10 @@ HUD.overlays = function (ui, ctx) {
     }
     const mine = ui.res && ui.res.seats.some((s) => s.id === ctx.myId);
     const out = tour && T.eliminated(tour, ctx.myId) >= 0;
-    $("brNote").textContent = ui.ph === "done" ? (tour.champion === ctx.myId ? t("youChamp") : "") : (out ? t("eliminated") : mine ? "" : "");
+    const others = ui.ph === "bracket" && ctx.busy > 0;
+    $("brNote").textContent = ui.ph === "done" ? (tour.champion === ctx.myId ? t("youChamp") : "") : others ? t("othersPlaying", ctx.busy) : (out ? t("eliminated") : mine ? "" : "");
     $("brGo").textContent = ui.ph === "done" ? t("again") : t("continue");
+    $("brGo").hidden = others;
     br.hidden = false;
   }
 };

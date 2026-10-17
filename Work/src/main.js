@@ -15,7 +15,7 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 // Match rules the host picks in the lobby (kept identical in hoplobby.json "options").
 export const LOBBY_OPTIONS = [
   { key: "mode", label: { en: "Mode", "pt-PT": "Modo" }, type: "choice", default: "singles",
-    choices: [{ value: "singles", label: "Singles" }, { value: "doubles", label: "Doubles (2 v 2)" }, { value: "tournament", label: "Tournament (8 players)" }] },
+    choices: [{ value: "singles", label: "Singles" }, { value: "doubles", label: "Doubles (2 v 2)" }, { value: "tournament", label: "Tournament (up to 16)" }] },
   { key: "points", label: { en: "Game to", "pt-PT": "Jogo até" }, type: "choice", default: 11,
     choices: [{ value: 7, label: "7" }, { value: 11, label: "11" }, { value: 21, label: "21" }] },
   { key: "ai", label: { en: "Computer skill", "pt-PT": "Nível do computador" }, type: "choice", default: "rising",
@@ -30,7 +30,8 @@ const GFX = {
   ultra: { level: "ultra", pixelRatio: 2, shadows: "soft", antialias: true, effects: true, particles: 1, drawDistance: 1, textureScale: 1 }
 };
 
-const state = { S: null, persons: {}, mySeat: null, prefs: { ring: true, hudScale: 1, swipe: 1 }, last: 0, hudKey: "", hints: 0, serves: 0, wait: false, lastUi: null, auto: Q.has("auto") };
+// persons: the people at your table (state.people[focus]); people[n] = { persons, sig } per table.
+const state = { S: null, people: [], persons: {}, focus: -1, mySeat: null, prefs: { ring: true, hudScale: 1, swipe: 1 }, last: 0, hudKey: "", hints: 0, serves: 0, wait: false, lastUi: null, auto: Q.has("auto") };
 
 // ---------------------------------------------------------------------------- HopLobby (or a stub)
 const inLobby = typeof HopLobby !== "undefined";
@@ -56,25 +57,40 @@ function gfxNow() {
 
 // ---------------------------------------------------------------------------- people
 function side(seat) { return seat[0]; }
-function buildPeople(setup) {
-  Object.values(state.persons).forEach((p) => p.dispose());
-  state.persons = {};
+// The people at table n. Rebuilt only when who sits where changes (a new game, a joiner, a leaver).
+function buildPeople(setup, fresh, n) {
+  const tp = state.people[n] || (state.people[n] = { persons: {}, sig: "" });
+  const sig = setup ? setup.id + "|" + setup.seats.map((s) => s.seat + ":" + (s.human ? s.id : "cpu" + s.look) + ":" + s.name).join(",") : "";
+  if (sig === tp.sig) return;
+  tp.sig = sig;
+  Object.values(tp.persons).forEach((p) => p.dispose());
+  tp.persons = {};
+  if (n === state.focus) state.persons = tp.persons;
+  if (!setup) { W.setTableBall(n, null); W.setScore(n, null); return; }
   const net = state.S.net;
-  state.mySeat = state.S.mySeat();
-  W.viewSide = state.mySeat && side(state.mySeat) === "c" ? -1 : 1;
   const loads = [];
   setup.seats.forEach((s) => {
     const mine = s.id && s.id === net.me;
-    const p = new Person(W.scene, { seat: s.seat, side: side(s.seat), human: s.human, hl: s.id, name: s.name, look: s.look, tagText: mine ? s.name + " ★" : s.name });
+    const p = new Person(W.scene, { seat: s.seat, side: side(s.seat), human: s.human, hl: s.id, name: s.name, look: s.look, tagText: mine ? s.name + " ★" : s.name, off: W.tableOff(n) });
     p.ikW = 1;
-    state.persons[s.seat] = p;
-    loads.push(p.load().catch((err) => { console.warn("person", s.seat, err && err.message); }));
+    tp.persons[s.seat] = p;
+    loads.push(p.load().catch((err) => { console.warn("person", n, s.seat, err && err.message); }));
   });
-  state.wait = true;
-  HUD.wait(t("loadChars"));
-  Promise.all(loads).then(() => { state.wait = false; HUD.wait(null); });
-  HUD.scale(state.prefs.hudScale);
+  if (n === state.S.focus().n) {
+    state.wait = true;
+    HUD.wait(t("loadChars"));
+    Promise.all(loads).then(() => { state.wait = false; HUD.wait(null); });
+  }
   state.hudKey = "";
+}
+
+// Your table changed (a new game somewhere else, knocked out, a seat at another table).
+function refocus(n) {
+  state.focus = n;
+  state.persons = (state.people[n] && state.people[n].persons) || {};
+  W.setFocus(n);
+  state.hudKey = "";
+  onUi(state.S.tables[n].ui, n);
 }
 
 function dirOf(e, seat) {
@@ -84,7 +100,16 @@ function dirOf(e, seat) {
 }
 
 // ---------------------------------------------------------------------------- events -> effects
-function onEvent(e) {
+// Every table's players swing and react; the sounds, sparks and banners are for your table only.
+function onEvent(e, n) {
+  const tp = state.people[n];
+  if (n !== state.focus) {
+    const person = tp && e.seat && tp.persons[e.seat];
+    if ((e.type === "hit" || e.type === "serve") && person && e.x !== undefined) person.hit(e.t, new THREE.Vector3(e.x, e.y, e.z), dirOf(e, e.seat), e.type === "serve" ? "serve" : e.kind);
+    else if (e.type === "plan" && person) person.plan(e.tc, new THREE.Vector3(e.cx, e.cy, e.cz), new THREE.Vector3(0, 0, side(e.seat) === "p" ? -1 : 1));
+    else if (e.type === "point" && e.gameOver && tp) Object.values(tp.persons).forEach((p) => { if (p.ready && p.side === e.winner) p.emote("cheer", 1.6); });
+    return;
+  }
   const S = state.S, P = state.persons, my = state.mySeat;
   const person = e.seat && P[e.seat];
   switch (e.type) {
@@ -141,11 +166,12 @@ function onEvent(e) {
 function touch() { return !!(HL && HL.device && HL.device.touch) || "ontouchstart" in window; }
 function showRallyHint() { HUD.hint(touch() ? t("rallyHint") : t("rallyHintKey")); setTimeout(() => HUD.hint(null), 2800); }
 
-function onUi(ui) {
-  state.lastUi = ui;
+function onUi(ui, n) {
   const S = state.S;
+  if (n !== undefined && n !== S.focus().n) return;
+  state.lastUi = ui;
   const mySide = S.mySeat() ? side(S.mySeat()) : null;
-  HUD.overlays(ui, { mySide, myId: S.net.me });
+  HUD.overlays(ui, { mySide, myId: S.net.me, tour: S.tour, busy: S.playing() });
   Input.enabled = !ui || ui.ph === "play";
   if (ui && ui.ph === "result") A.music("results"); else A.music("play");
 }
@@ -156,14 +182,30 @@ function frame(now) {
   const dt = clamp((now - state.last) / 1000, 0, 0.1);
   state.last = now;
   const S = state.S;
+  if (S.focus().n !== state.focus) refocus(S.focus().n);
   S.update(dt);
-  const v = S.view(dt);
-  if (!v) { W.render(); return; }
+  const F = S.focus();
+  if (F.n !== state.focus) refocus(F.n);
+  state.mySeat = S.mySeat();
+  W.viewSide = state.mySeat && side(state.mySeat) === "c" ? -1 : 1;
+  // The other tables: their players and balls, the live scores on every court.
+  for (const tb of S.tables) {
+    if (tb === F || !tb.setup) continue;
+    const ov = S.view(dt, tb);
+    const tp = state.people[tb.n];
+    if (!ov || !tp) continue;
+    ov.seats.forEach((st) => { const p = tp.persons[st.seat]; if (p) { p.lite = !!W.lite; p.update(dt, ov.t, st, ov.ph); } });
+    W.setTableBall(tb.n, tb.ui.ph === "play" && ov.ph !== "point" && ov.ph !== "over" ? ov.ball : null);
+    W.setScore(tb.n, ov.sc);
+  }
+  const v = S.view(dt, F);
+  if (!v) { W.setTableBall(F.n, null); W.placeCamera(null, dt); W.render(); return; }
+  W.setScore(F.n, v.sc);
   const my = state.mySeat, simT = v.t;
   let me = null;
   v.seats.forEach((st) => {
     const p = state.persons[st.seat];
-    if (p) p.update(dt, simT, st, v.ph);
+    if (p) { p.lite = false; p.update(dt, simT, st, v.ph); }
     if (st.seat === my) me = st;
   });
   W.setBall(v.ball, dt);
@@ -182,10 +224,11 @@ function hudTick(v) {
   if (!setup) return;
   const names = { p: [], c: [] };
   setup.seats.forEach((s) => names[s.seat[0]].push(s.id && s.id === S.net.me ? t("you") : s.name));
-  const key = [names.p.join("&"), names.c.join("&"), v.sc[0], v.sc[1], v.sv, setup.target].join("|");
+  const many = S.active().length > 1;
+  const key = [names.p.join("&"), names.c.join("&"), v.sc[0], v.sc[1], v.sv, setup.target, many ? v.n : ""].join("|");
   if (key !== state.hudKey) {
     state.hudKey = key;
-    HUD.score({ p: names.p.join(" & "), c: names.c.join(" & ") }, v.sc, v.sv ? v.sv[0] : "p", setup.target, state.mySeat ? side(state.mySeat) : null);
+    HUD.score({ p: names.p.join(" & "), c: names.c.join(" & ") }, v.sc, v.sv ? v.sv[0] : "p", setup.target, state.mySeat ? side(state.mySeat) : null, many ? v.n + 1 : 0);
   }
   HUD.show(true);
   if (!state.mySeat && S.ui.ph === "play" && !state.wait) HUD.wait(t("spectate")); else if (!state.wait) HUD.wait(null);
@@ -251,7 +294,7 @@ async function boot() {
   const o = ctx.options || defaults;
   const S = state.S = new Session(net, { mode: o.mode || "singles", target: +o.points || 11, ai: o.ai || "rising" }, {
     onEvent, onUi,
-    onSetup: (setup) => buildPeople(setup)
+    onSetup: (setup, fresh, n) => buildPeople(setup, fresh, n)
   });
   S.net = net;
   Input.init($("view"), $("swipe"), (intent) => { A.unlock(); S.swing(intent); });

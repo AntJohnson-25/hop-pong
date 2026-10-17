@@ -46,6 +46,8 @@ button.ghost { background: rgba(255, 255, 255, 0.1); color: var(--text); }
 .res-row.win { background: rgba(196, 243, 91, 0.18); }
 
 .bracket { display: grid; grid-template-columns: repeat(3, 1fr) ; gap: 14px; }
+.bracket.big { grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.bracket.big .bm { font-size: 12px; padding: 4px 6px; margin-bottom: 5px; }
 .bcol h3 { margin: 0 0 8px; font-size: 12px; color: var(--dim); letter-spacing: 1.5px; }
 .bm { background: rgba(255, 255, 255, 0.06); border-radius: 10px; padding: 6px 8px; margin-bottom: 8px; font-size: 14px; }
 .bm.live { outline: 2px solid var(--lime); }
@@ -53,7 +55,7 @@ button.ghost { background: rgba(255, 255, 255, 0.1); color: var(--text); }
 .bm .bl.w { font-weight: 800; color: var(--lime); }
 .bm .bl.l { color: var(--dim); }
 .bm .bl.me { text-decoration: underline; }
-@media (max-width: 560px) { .bracket { grid-template-columns: 1fr; } .card.wide { padding: 16px; } }
+@media (max-width: 560px) { .bracket, .bracket.big { grid-template-columns: 1fr; } .card.wide { padding: 16px; } }
 
 .wait { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); background: var(--panel); padding: 10px 18px; border-radius: 14px; z-index: 4; text-align: center; max-width: 88vw; }
 .loading { position: fixed; inset: 0; background: var(--ink); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; z-index: 20; }

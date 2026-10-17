@@ -25,6 +25,21 @@ User chose scope: **1v1 tournament + doubles** (tournament is singles only). Bui
   URL hooks: `?auto=1` computer plays your side, `?g=potato`, `?mode=doubles|tournament`, `?points=7`.
 - hoplobby.json validated (players 1-8, lateJoin, 3 options; keep identical to LOBBY_OPTIONS in main.js).
 
+Session 2 (2026-10-17): **full lobby (16)**. maxPlayers 16. The hall has 8 tables (2 rows x 4,
+`TABLES` in world.js); game.js Session runs one Match per table on the host, one combined snapshot
+(`k:"st", tb:[...]`) at 20 Hz and a `k:"hall"` full state (all tables + tour) — biggest message
+measured < 16 KB with 16 players. Everyone plays at once: singles 2 per table, doubles 4, the
+computer fills seats; joiners take a computer seat (next to a human first) or open a free table; a
+casual table with no humans closes. Tournament draws 16 when >8 humans (round of 16 added), all
+live matches of a round at once, bracket waits for the other tables. Focus = your table, else a
+watched/live one (camera glides there). HopLobby badge (brand-kit paths, as in Hop Spades) on
+each table half + barrier boards + big screen. Room rebuilt as a sports hall: instanced tables
+(bevelled top, folding frame, castors), court mats, ITTF boards, umpire desks with live flip
+scoreboards, pilasters, night windows, trusses, light fixtures, ducts, raked stands with seats and
+a crowd (W.detail: hidden on potato/low). Other tables' players skip arm IK on potato/low.
+Tests: tests.js 40, net-test.js 37 (adds 16 singles/doubles/tournament). Shots: Notes/shots/hall-*.png.
+Not yet: real-lobby test with 16, frame rate on the user's UHD 600 with 8 tables of avatars.
+
 NOT done / not seen: real HopLobby lobby (prepare_dev_mode link not made), real avatars (only bot stand-ins
 seen), hand feel of swipes on a phone, backhand (always forehand pose), music (user supplies), credits page +
 HANDOFF.md licence table (three.js MIT, GLTFLoader MIT, own cast), cover.webp, screenshots/listing, demo host

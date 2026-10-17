@@ -58,9 +58,12 @@ function nameTag(text) {
 }
 
 export class Person {
-  // spec: { seat, side, human, hl (HopLobby player id for avatars), name, look (bot index) }
+  // spec: { seat, side, human, hl (HopLobby player id for avatars), name, look (bot index),
+  // off (where their table is; sim positions are table-local) }
   constructor(scene, spec) {
     this.scene = scene;
+    this.off = spec.off ? spec.off.clone() : new THREE.Vector3();
+    this.lite = false;           // no arm IK (a far table on a low preset)
     this.seat = spec.seat; this.side = spec.side; this.s = spec.side === "p" ? 1 : -1;
     this.right = spec.side === "p" ? 1 : -1;       // world x of their right hand
     this.human = !!spec.human; this.hl = spec.hl || null; this.look = spec.look || 0; this.name = spec.name || spec.seat;
@@ -118,8 +121,9 @@ export class Person {
   }
 
   // The ball is about to be hit: where and how (set from the sim's plan / hit / serve events).
-  plan(tc, c, dir) { this.sw = { tc, c: c.clone(), dir: dir.clone(), kind: "drive", hit: false }; }
-  hit(t, c, dir, kind) { this.sw = { tc: t, c: c.clone(), dir: dir.clone(), kind: kind || "drive", hit: true }; }
+  // c is table-local.
+  plan(tc, c, dir) { this.sw = { tc, c: c.clone().add(this.off), dir: dir.clone(), kind: "drive", hit: false }; }
+  hit(t, c, dir, kind) { this.sw = { tc: t, c: c.clone().add(this.off), dir: dir.clone(), kind: kind || "drive", hit: true }; }
 
   // Hand path around the contact point; u = seconds from contact.
   handTarget(out, u, base) {
@@ -147,7 +151,7 @@ export class Person {
     const tx = sim.x - this.right * 0.5, tz = sim.z + s * 0.3;
     const dx = tx - root.position.x, dz = tz - root.position.z;
     this.vx = dt > 0 ? dx / dt : 0; this.vz = dt > 0 ? dz / dt : 0;
-    root.position.set(tx, 0, tz);
+    root.position.set(tx + this.off.x, 0, tz + this.off.z);
     // Face the net, turning a little toward where they are running.
     const sp = Math.hypot(sim.vx || 0, sim.vz || 0);
     const target = s > 0 ? 0 : Math.PI;
@@ -166,6 +170,7 @@ export class Person {
     if (this.emoteUntil > 0) { this.emoteUntil -= dt; if (this.emoteUntil <= 0) { this.ikW = 1; ["cheer", "shrug", "wave"].forEach((k) => { if (this.acts[k]) this.acts[k].fadeOut(0.2); }); } }
     this.mixer.update(dt);
     root.updateMatrixWorld(true);
+    if (this.lite) { this.paddle.position.copy(root.position).add(_v.set(this.right * 0.3, 0.95, -s * 0.3)); return; }
     this.pose(simT, phase);
   }
 

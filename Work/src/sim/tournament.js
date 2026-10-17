@@ -1,19 +1,25 @@
-// The tournament: an 8-entrant single-elimination 1v1 bracket. Pure, no DOM; plain JSON so it
-// fits in a relay message (syncState) and a cloud save.
+// The tournament: a single-elimination 1v1 bracket of 8 entrants, or 16 when more than 8 people
+// are in the lobby. Pure, no DOM; plain JSON so it fits in a relay message (syncState) and a
+// cloud save.
 //
 // Entrants are { id, name, human, level } (humans are lobby players, the rest are computer
 // players that fill the draw). A match with a human in it is played for real (the host runs a
-// Match); AI-vs-AI matches are decided by a quick rally sim under the real rules.
+// Match, one table each, all at once); AI-vs-AI matches are decided by a quick rally sim under
+// the real rules.
 import { Rules } from "./rules.js";
 import { mulberry32 } from "./match.js";
 
+// All rounds a 16 draw plays; an 8 draw starts at the quarterfinal.
 export const ROUNDS = [
+  { name: "ROUND OF 16", short: "R16", target: 7 },
   { name: "QUARTERFINAL", short: "QF", target: 7 },
   { name: "SEMIFINAL", short: "SF", target: 7 },
   { name: "FINAL", short: "F", target: 11 }
 ];
-export const SIZE = 8;
+export const SIZE = 8, MAX_SIZE = 16;
 const STRENGTH = { easy: 0, medium: 1, hard: 2 };
+
+export function roundsOf(t) { return ROUNDS.slice(ROUNDS.length - Math.log2((t && t.size) || SIZE)); }
 
 function shuffle(a, rng) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
@@ -24,27 +30,30 @@ function shuffle(a, rng) {
 // ai: "easy" | "medium" | "hard" | "rising" (the computer players get tougher each round).
 export function newTournament(humans, fillers, ai = "rising", seed = (Date.now() & 0x7fffffff)) {
   const rng = mulberry32(seed);
-  const hs = humans.slice(0, SIZE);
-  const need = SIZE - hs.length;
+  const size = humans.length > SIZE ? MAX_SIZE : SIZE;
+  const hs = humans.slice(0, size);
+  const need = size - hs.length;
   if (fillers.length < need) throw new Error("need " + need + " computer players");
   const cs = shuffle(fillers.slice(), rng).slice(0, need);
   const draw = shuffle([
     ...hs.map((h) => ({ id: h.id, name: h.name, human: true })),
     ...cs.map((c) => ({ id: c.id, name: c.name, human: false }))
   ], rng);
-  return { v: 1, ai, seed, draw, round: 0, results: ROUNDS.map(() => []), champion: null };
+  const t = { v: 2, size, ai, seed, draw, round: 0, results: [], champion: null };
+  t.results = roundsOf(t).map(() => []);
+  return t;
 }
 
-// Computer skill for round r.
+// Computer skill for round r (Rising: easy early, medium in the semis, hard in the final).
 export function levelFor(t, r) {
-  if (t.ai === "rising") return ["easy", "medium", "hard"][r];
+  if (t.ai === "rising") return ["easy", "medium", "hard"][Math.max(0, r - (roundsOf(t).length - 3))];
   return t.ai;
 }
 
 function byId(t, id) { return t.draw.find((e) => e.id === id) || null; }
 export function matches(t, r) {
   const prev = r === 0 ? null : t.results[r - 1];
-  const n = SIZE >> (r + 1);
+  const n = (t.size || SIZE) >> (r + 1);
   const out = [];
   for (let i = 0; i < n; i++) {
     const a = r === 0 ? t.draw[i * 2] : (prev[i * 2] ? byId(t, prev[i * 2].w) : null);
@@ -86,18 +95,19 @@ export function record(t, round, slot, sa, sb) {
 // Sim every undecided match with no human, and move to the next round when a round is whole.
 export function settle(t) {
   const rng = mulberry32(t.seed + 1000 * (t.round + 1));
-  for (let guard = 0; guard < ROUNDS.length && !t.champion; guard++) {
+  const rounds = roundsOf(t);
+  for (let guard = 0; guard < rounds.length && !t.champion; guard++) {
     const ms = matches(t, t.round);
     ms.forEach((m) => {
       if (!m.res && m.a && m.b && !m.a.human && !m.b.human) {
-        t.results[t.round][m.slot] = simMatch(m.a, m.b, ROUNDS[t.round].target, levelFor(t, t.round), rng);
+        t.results[t.round][m.slot] = simMatch(m.a, m.b, rounds[t.round].target, levelFor(t, t.round), rng);
       }
     });
     // Humans who are no longer in (or were never needed) cannot hold the bracket up: a match
     // between a human and a computer player stays live until someone records it.
     const done = matches(t, t.round).every((m) => m.res);
     if (!done) break;
-    if (t.round === ROUNDS.length - 1) { t.champion = t.results[t.round][0].w; break; }
+    if (t.round === rounds.length - 1) { t.champion = t.results[t.round][0].w; break; }
     t.round++;
   }
   return t;
@@ -112,9 +122,10 @@ export function humansLeft(t) {
 
 export function playOut(t) {
   const rng = mulberry32(t.seed + 77);
+  const rounds = roundsOf(t);
   for (let guard = 0; guard < 8 && !t.champion; guard++) {
     matches(t, t.round).forEach((m) => {
-      if (!m.res && m.a && m.b) t.results[t.round][m.slot] = simMatch(m.a, m.b, ROUNDS[t.round].target, levelFor(t, t.round), rng);
+      if (!m.res && m.a && m.b) t.results[t.round][m.slot] = simMatch(m.a, m.b, rounds[t.round].target, levelFor(t, t.round), rng);
     });
     settle(t);
   }
@@ -122,7 +133,7 @@ export function playOut(t) {
 }
 
 export function eliminated(t, id) {
-  for (let r = 0; r < ROUNDS.length; r++) {
+  for (let r = 0; r < roundsOf(t).length; r++) {
     for (const m of matches(t, r)) {
       if (m.res && (m.a.id === id || m.b.id === id) && m.res.w !== id) return r;
     }

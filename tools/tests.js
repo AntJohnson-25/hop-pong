@@ -2,7 +2,7 @@
 import { Rules, serveCycle } from "../Work/src/sim/rules.js";
 import { Match } from "../Work/src/sim/match.js";
 import { shotTarget, shotVelocity, fly, serveVelocity } from "../Work/src/sim/shots.js";
-import { newTournament, matches, liveMatches, record, settle, playOut, humansLeft } from "../Work/src/sim/tournament.js";
+import { newTournament, matches, liveMatches, record, settle, playOut, humansLeft, roundsOf, levelFor } from "../Work/src/sim/tournament.js";
 
 let fail = 0, n = 0;
 const ok = (c, m) => { n++; if (!c) { fail++; console.log("FAIL", m); } };
@@ -148,6 +148,19 @@ eq(serveCycle(true).map(x => x.join(">")), ["p0>c0", "c0>p1", "p1>c1", "c1>p0"],
   record(t2, 0, l[0].slot, l[0].a.human ? 3 : 7, l[0].a.human ? 7 : 3);
   ok(!humansLeft(t2) || liveMatches(t2).length === 0, "human out");
   playOut(t2); ok(!!t2.champion, "playOut crowns someone after the human loses");
+  // more than 8 people: a 16 draw with a round of 16
+  const many = "abcdefghij".split("").map((x) => ({ id: "h" + x, name: x }));
+  const fill16 = "A B C D E F G H I J K L M N O P".split(" ").map((x) => ({ id: "c" + x, name: x }));
+  const t3 = newTournament(many, fill16, "rising", 9);
+  eq(t3.draw.length, 16, "draw of 16 for 10 people");
+  eq(roundsOf(t3).length, 4, "four rounds");
+  ok(levelFor(t3, 0) === "easy" && levelFor(t3, 3) === "hard", "rising skill over four rounds");
+  settle(t3);
+  for (let g = 0; g < 8 && !t3.champion; g++) {
+    for (const m of liveMatches(t3)) record(t3, t3.round, m.slot, 7, 4);
+    if (!liveMatches(t3).length && !t3.champion) playOut(t3);
+  }
+  ok(!!t3.champion, "16 draw names a champion");
 }
 console.log(fail ? fail + " FAILED of " + n : "ALL PASS (" + n + " checks)");
 process.exit(fail ? 1 : 0);

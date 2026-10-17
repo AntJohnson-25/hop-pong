@@ -142,5 +142,71 @@ function mk(R, id, name, mode, extra) {
   run(R, 5, [bot(A), bot(B)]);
   ok(true, "garbage messages survived");
 }
+// A relay that records the biggest message (HopLobby's limit is 16 KB of JSON).
+function sizeWatch(R) {
+  R.maxMsg = 0;
+  for (const c of R.clients.values()) {
+    const send = c.net.send;
+    c.net.send = (data, to) => { R.maxMsg = Math.max(R.maxMsg, JSON.stringify(data).length); return send(data, to); };
+  }
+}
+function full(R, mode, count) {
+  const cs = [];
+  for (let i = 0; i < count; i++) cs.push(mk(R, "P" + i, "Player " + i, mode));
+  sizeWatch(R);
+  return cs;
+}
+// 6) a full lobby of 16, singles: eight tables, everyone seated, one human per seat
+{
+  const R = makeRelay({ seed: 21 });
+  const cs = full(R, "singles", 16);
+  const bots = cs.map(bot);
+  run(R, 4, bots);
+  const H = cs[0].sess;
+  ok(H.active().length === 8, "16 singles players use 8 tables: " + H.active().length);
+  const seats = cs.map((c) => c.sess.myTable() && c.sess.myTable().n + ":" + c.sess.mySeat());
+  ok(seats.every(Boolean) && new Set(seats).size === 16, "everyone has their own seat: " + seats.join(" "));
+  ok(cs.every((c) => c.sess.active().length === 8), "every client sees all 8 tables");
+  run(R, 40, bots);
+  const pts = H.tables.map((tb) => tb.match ? tb.match.rules.score.p + tb.match.rules.score.c : 0);
+  ok(pts.every((p) => p >= 2), "every table is playing: points " + pts);
+  const last = cs[15], tb = last.sess.myTable();
+  const v = last.sess.view(1 / 60), hv = H.view(1 / 60, H.tables[tb.n]);
+  ok(Math.abs(v.sc[0] - hv.sc[0]) + Math.abs(v.sc[1] - hv.sc[1]) <= 1, "table " + (tb.n + 1) + " score agrees on a client " + v.sc + " / " + hv.sc);
+  ok(R.maxMsg < 16000, "biggest message " + R.maxMsg + " bytes < 16 KB");
+  // two players at one table leave: the table closes; a newcomer gets a table of their own
+  const gone = H.tables[3].setup.seats.map((s) => s.id);
+  gone.forEach((id) => R.remove(id));
+  run(R, 1, bots.filter((_, i) => !gone.includes("P" + i)));
+  ok(H.tables[3].ui.ph === "idle", "an empty table closes");
+  const N = mk(R, "N", "Newbie", "singles"); N.sess.hello();
+  run(R, 3, [bot(N)]);
+  ok(N.sess.myTable() && N.sess.mySeat(), "a newcomer is seated: table " + (N.sess.myTable() && N.sess.myTable().n));
+}
+// 7) a full lobby of 16, doubles: four tables of four
+{
+  const R = makeRelay({ seed: 22 });
+  const cs = full(R, "doubles", 16);
+  run(R, 4, cs.map(bot));
+  ok(cs[0].sess.active().length === 4, "16 doubles players use 4 tables: " + cs[0].sess.active().length);
+  ok(cs.every((c) => c.sess.mySeat()), "all 16 seated in doubles");
+  ok(R.maxMsg < 16000, "biggest doubles message " + R.maxMsg);
+}
+// 8) a 16-player tournament: a 16 draw, round of 16 all at once, a champion
+{
+  const R = makeRelay({ seed: 23 });
+  const cs = full(R, "tournament", 16);
+  const bots = cs.map(bot);
+  run(R, 3, bots);
+  const H = cs[0].sess;
+  ok(H.tour && H.tour.size === 16, "16 draw: size " + (H.tour && H.tour.size));
+  ok(H.active().length === 8, "round of 16 on 8 tables: " + H.active().length);
+  let guard = 0;
+  while (guard++ < 200 && H.ui.ph !== "done") { run(R, 15, bots); if (!H.playing() && H.tables.some((tb) => tb.ui.ph === "bracket")) H.advance(); }
+  run(R, 1, bots);           // let the last message arrive
+  ok(H.ui.ph === "done" && !!H.tour.champion, "16-player tournament crowns " + (H.tour && H.tour.champion));
+  ok(cs[9].sess.ui.ph === "done", "clients reach the end too: " + cs[9].sess.ui.ph);
+  ok(R.maxMsg < 16000, "biggest tournament message " + R.maxMsg);
+}
 console.log(fail ? fail + " FAILED of " + n : "ALL PASS (" + n + " checks)");
 process.exit(fail ? 1 : 0);
