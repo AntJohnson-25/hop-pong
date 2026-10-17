@@ -14,7 +14,7 @@ button.ghost { background: rgba(255, 255, 255, 0.1); color: var(--text); }
 .hud { position: fixed; inset: 0; pointer-events: none; }
 .score { position: absolute; left: 16px; top: max(12px, env(safe-area-inset-top)); background: var(--panel); border-radius: 14px; padding: 8px 12px 8px; min-width: 150px; }
 .srow { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 2px 0; }
-.srow .sname { font-weight: 700; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .sname { font-weight: 700; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .srow .sval { font-weight: 900; font-size: 26px; min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
 #rowP .sname::before, #rowC .sname::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; vertical-align: middle; }
 #rowP .sname::before { background: var(--lime); }

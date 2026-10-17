@@ -7,11 +7,28 @@ user's pickleball game "King of the Dill" (`G:\ICM Workspace\01-Projects\pickleb
 feel, same pure-logic split (physics, shots, rules, ai), same tournament idea. Players are always their
 own HopLobby avatars. Built on SDK 1.6.0 and the HopLobby rules; HopLobby builds and hosts the source.
 
-## Current status (2026-10-17)
+## Current status (2026-10-17, end of session 1)
 
-- Project folder created. Research done (docs read: platform-rules, sdk, multiplayer, packaging, avatars,
-  assets-and-performance, content-policy, testing checklist). Nothing built yet.
+User chose scope: **1v1 tournament + doubles** (tournament is singles only). Built and committed (git main):
+- `Work/src/sim/` pure logic, all tested: physics, shots (solver + legal serves), rules (singles + doubles
+  rotation, hit order, deuce), ai (3 levels, Hard beats Easy 38/40), match (swing timing with late window,
+  grace for network, restore/convertToAI/convertToHuman), tournament (8-entrant bracket).
+- `Work/src/game.js` Session: host-authoritative, snapshots 20 Hz, swings stamped in sim time, queue/rotation
+  for >4 humans, late joiner takes a computer seat, host hand-over, tournament flow.
+- Client: world.js (rec room, graphics presets), people.js (HopLobby avatars / our cast, procedural paddle
+  swing by IK), input (swipe/keys), hud, audio (synth + music slots), strings (en, pt-PT), main.js (SDK wiring,
+  menu.set, lobby options).
+- Tests: `node tools/tests.js` (36), `tools/sim-test.js` (AI balance), `tools/net-test.js` (21, fake relay with
+  loss/latency, host leaves, tournament). Node = G:\ICM Workspace\tools\node\node.exe.
+- Seen in headless Edge (serve: py313 tools\serve.py 8795, `tools\edge.ps1`): singles, doubles, bracket
+  overlay, phone portrait, contact ring, GOOD/PERFECT banners. Shots in Notes/shots (git-ignored).
+  URL hooks: `?auto=1` computer plays your side, `?g=potato`, `?mode=doubles|tournament`, `?points=7`.
+- hoplobby.json validated (players 1-8, lateJoin, 3 options; keep identical to LOBBY_OPTIONS in main.js).
 
+NOT done / not seen: real HopLobby lobby (prepare_dev_mode link not made), real avatars (only bot stand-ins
+seen), hand feel of swipes on a phone, backhand (always forehand pose), music (user supplies), credits page +
+HANDOFF.md licence table (three.js MIT, GLTFLoader MIT, own cast), cover.webp, screenshots/listing, demo host
+(GitHub Pages like Hop Spades), submission. Swing animation not eyeballed frame by frame.
 ## What carries over from pickleball (pure logic, no DOM; port and retune for table tennis)
 
 `physics.js` (ball flight, drag, spin, bounce, net, prediction; 120 Hz fixed step), `shots.js` (swipe
@@ -63,7 +80,7 @@ retargeting) or the Mixamo clip pipeline; the HopLobby avatar has its own 19-bon
 
 ## Next action
 
-Confirm the design defaults with the user (see open questions), then: scaffold `Work/` (index.html,
+Dev Mode test with the user (prepare_dev_mode, serve Work on 127.0.0.1), then fix what real avatars/phones show; then credits/HANDOFF, cover, listing, demo repo, submission. (Old plan: scaffold `Work/` (index.html,
 vendored three, SDK init/progress/ready, menu.set, graphics), port the pure logic + tests, build the
 table, ball, paddle and an avatar test rig.
 

@@ -67,7 +67,7 @@ W.resize = function () {
   W.canvas.style.width = w + "px"; W.canvas.style.height = h + "px";
   W.camera.aspect = w / h;
   // Narrow (portrait) screens: a wider vertical field keeps the table in view.
-  W.camera.fov = w / h < 1 ? 72 : 54;
+  W.camera.fov = w / h < 1 ? 66 : 54;
   W.camera.updateProjectionMatrix();
   W.portrait = w / h < 1;
 };
@@ -268,9 +268,9 @@ W.placeCamera = function (me, dt) {
   const cam = W.camera;
   const tx = me ? Math.max(-1.4, Math.min(1.4, me.x * s)) : 0;       // follows you sideways
   W.camX += (tx - W.camX) * Math.min(1, dt * 4);
-  const high = W.portrait ? 3.4 : 2.85, back = W.portrait ? 5.8 : 5.3;
+  const high = W.portrait ? 2.5 : 2.85, back = W.portrait ? 5.0 : 5.3;
   cam.position.set(W.camX * s * 0.9 + s * 0.0, high, s * back);
-  const look = new THREE.Vector3(W.camX * s * 0.5, W.portrait ? 0.45 : 0.5, -s * 0.8);
+  const look = new THREE.Vector3(W.camX * s * 0.5, W.portrait ? 0.9 : 0.5, -s * (W.portrait ? 1.6 : 0.8));
   if (W.shake > 0.001) {
     cam.position.x += (Math.random() - 0.5) * W.shake; cam.position.y += (Math.random() - 0.5) * W.shake;
     W.shake *= Math.pow(0.001, dt);

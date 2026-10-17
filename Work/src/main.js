@@ -19,7 +19,7 @@ export const LOBBY_OPTIONS = [
   { key: "points", label: { en: "Game to", "pt-PT": "Jogo até" }, type: "choice", default: 11,
     choices: [{ value: 7, label: "7" }, { value: 11, label: "11" }, { value: 21, label: "21" }] },
   { key: "ai", label: { en: "Computer skill", "pt-PT": "Nível do computador" }, type: "choice", default: "rising",
-    choices: [{ value: "easy", label: "Easy" }, { value: "medium", label: "Medium" }, { value: "hard", label: "Hard" }, { value: "rising", label: "Rising" }] }
+    choices: [{ value: "easy", label: "Easy" }, { value: "medium", label: "Medium" }, { value: "hard", label: "Hard" }, { value: "rising", label: "Rising (tougher each round)" }] }
 ];
 
 const GFX = {
