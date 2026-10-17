@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0b1226">
+<title>Hop Pong</title>
+<meta name="description" content="Hop Pong: table tennis with friends. Singles, doubles and an 8-player tournament, played as your own HopLobby avatar.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="view" aria-label="The table tennis table"></canvas>
+
+<div id="hud" class="hud" hidden>
+  <div id="score" class="score" aria-live="polite">
+    <div class="srow" id="rowP"><span class="sname" id="nameP"></span><span class="sval" id="valP">0</span></div>
+    <div class="srow" id="rowC"><span class="sname" id="nameC"></span><span class="sval" id="valC">0</span></div>
+    <div class="sinfo" id="sinfo"></div>
+  </div>
+  <div id="banner" class="banner" aria-live="assertive"></div>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <div id="hint" class="hint"></div>
+  <div id="swipe" class="swipe" hidden></div>
+</div>
+
+<div id="bracket" class="overlay" hidden>
+  <div class="card wide">
+    <h2 id="brTitle"></h2>
+    <div id="brGrid" class="bracket"></div>
+    <p id="brNote" class="note"></p>
+    <div class="btns"><button type="button" id="brGo" class="primary"></button></div>
+  </div>
+</div>
+
+<div id="result" class="overlay" hidden>
+  <div class="card">
+    <h2 id="resTitle"></h2>
+    <div id="resBody" class="res-body"></div>
+    <div class="btns">
+      <button type="button" id="resAgain" class="primary"></button>
+      <button type="button" id="resLeave" class="ghost"></button>
+    </div>
+  </div>
+</div>
+
+<div id="wait" class="wait" hidden></div>
+<div id="loading" class="loading"><div class="ltitle">HOP <b>PONG</b></div><div class="lbar"><span id="lfill"></span></div><div id="lmsg" class="lmsg"></div></div>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/GLTFLoader.js"></script>
+<script src="https://hoplobby.com/sdk/v1/hoplobby.js"></script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
