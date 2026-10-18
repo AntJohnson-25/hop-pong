@@ -486,9 +486,10 @@ function buildCourts(tx) {
     W.scoreCv.push(c); W.scoreTex.push(tex); W.scoreKey.push("");
     const mat = new THREE.MeshBasicMaterial({ map: tex });
     const back = std(0x111522, { roughness: 0.6 });
-    [[faceA, 0.08, -0.6], [faceB, -0.08, Math.PI + 0.6]].forEach(([g, dz, ry]) => {
-      const f = new THREE.Mesh(g, mat); f.position.set(t.x + 2.3, 0.96, t.z + dz); f.rotation.set(0, ry, 0); W.scene.add(f);
-      const b = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.38, 0.02), back); b.position.copy(f.position); b.rotation.copy(f.rotation); b.translateZ(-0.012); W.scene.add(b);
+    // Inner edges meet at the ridge (x = t.x + 2.1, z = t.z) so neither back panel crosses the other face.
+    [[faceA, 0.147, -0.6], [faceB, -0.147, Math.PI + 0.6]].forEach(([g, dz, ry]) => {
+      const f = new THREE.Mesh(g, mat); f.position.set(t.x + 2.315, 0.96, t.z + dz); f.rotation.set(0, ry, 0); W.scene.add(f);
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.38, 0.02), back); b.position.copy(f.position); b.rotation.copy(f.rotation); b.translateZ(-0.012); W.scene.add(b);
     });
     W.setScore(n, null);
   });
