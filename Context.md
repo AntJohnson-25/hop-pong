@@ -40,10 +40,15 @@ a crowd (W.detail: hidden on potato/low). Other tables' players skip arm IK on p
 Tests: tests.js 40, net-test.js 37 (adds 16 singles/doubles/tournament). Shots: Notes/shots/hall-*.png.
 Not yet: real-lobby test with 16, frame rate on the user's UHD 600 with 8 tables of avatars.
 
-NOT done / not seen: real HopLobby lobby (prepare_dev_mode link not made), real avatars (only bot stand-ins
-seen), hand feel of swipes on a phone, backhand (always forehand pose), music (user supplies), credits page +
-HANDOFF.md licence table (three.js MIT, GLTFLoader MIT, own cast), cover.webp, screenshots/listing, demo host
-(GitHub Pages like Hop Spades), submission. Swing animation not eyeballed frame by frame.
+Session 3 (2026-10-18): real Dev Mode lobby with a 2nd player over a cloudflared tunnel, doubles vs computer
+partners: worked. Scoreboard digit fix (world.js, tent faces meet at the ridge). Relay hardening (game.js:
+result card only for seated players, `hi` throttled; main.js try/catch; net-test.js test 9 = junk + forged
+messages, 46 checks). Pushed to https://github.com/AntJohnson-25/hop-pong (main). Submission package done:
+`hoplobby.json` now at the REPO ROOT (build.output "Work"), HANDOFF.md (licences), Work/cover.jpg,
+Submission/ (submission.json, listing.md via tools/make-listing.js, screenshots, README.md).
+NOT done / not seen: demo host (GitHub Pages from a `gh-pages` copy of Work/, https://antjohnson-25.github.io/hop-pong/),
+Potato/Ultra + Esc menu Back to lobby / End game checked live, 16-player frame rate on the UHD 600, hand feel
+of swipes on a phone, backhand (always forehand pose), music (user supplies), the draft + Submit.
 ## What carries over from pickleball (pure logic, no DOM; port and retune for table tennis)
 
 `physics.js` (ball flight, drag, spin, bounce, net, prediction; 120 Hz fixed step), `shots.js` (swipe
