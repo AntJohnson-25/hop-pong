@@ -208,5 +208,53 @@ function full(R, mode, count) {
   ok(cs[9].sess.ui.ph === "done", "clients reach the end too: " + cs[9].sess.ui.ph);
   ok(R.maxMsg < 16000, "biggest tournament message " + R.maxMsg);
 }
+// 9) bad messages through the relay: a reviewer sends junk and nothing breaks, forged moves do nothing
+{
+  const R = makeRelay({ seed: 31 });
+  const A = mk(R, "A", "Ann", "singles"), B = mk(R, "B", "Bob", "singles");
+  const bots = [bot(A), bot(B)];
+  run(R, 4, bots);
+  const H = A.sess, tb = H.tables[0], id = tb.setup.id;
+  const junk = [
+    undefined, null, 0, 1, "", "sw", "x".repeat(100000), true, [], [1, 2, 3], {}, { k: null }, { k: 5 }, { k: ["sw"] }, { k: {} },
+    { k: "sw" }, { k: "sw", id }, { k: "sw", id, seat: "p0" }, { k: "sw", id, seat: "__proto__", i: { kind: "drive" }, ts: 0 },
+    { k: "sw", id, seat: "constructor", i: {}, ts: 1 }, { k: "sw", id, seat: "p0", i: [], ts: 1e308 }, { k: "sw", id, seat: "p0", i: { kind: {}, aim: "a", depth: [], pace: null, curve: {} }, ts: -1e308 },
+    { k: "sw", id: { a: 1 }, seat: ["p0"], i: "x", ts: {} }, { k: "adv", n: "x" }, { k: "adv", n: -5 }, { k: "adv", n: 1e12 }, { k: "adv", n: {} }, { k: "adv", n: [1] },
+    { k: "hi", n: 1 }, { k: "hall", tables: "x" }, { k: "hall", tables: [null, 1, "a", { n: -1 }] }, { k: "ui", n: {}, ui: 1 }, { k: "st", tb: [null, { n: 99 }, "x"] },
+    { k: "st", tb: { length: 1e9 } }, { __proto__: { k: "adv" } }, JSON.parse('{"k":"sw","__proto__":{"x":1},"constructor":{"prototype":{"y":1}}}')
+  ];
+  let threw = 0;
+  for (const from of ["B", "X", "A"]) for (const m of junk) { try { H.onMessage(m, from); } catch (e) { threw++; console.log("host threw on", JSON.stringify(m).slice(0, 80), String(e)); } }
+  for (const from of ["A", "B", "X"]) for (const m of junk) { try { B.sess.onMessage(m, from); } catch (e) { threw++; console.log("client threw on", JSON.stringify(m).slice(0, 80), String(e)); } }
+  ok(threw === 0, "junk messages never throw (" + threw + " threw)");
+  ok(({}).x === undefined && ({}).y === undefined, "no prototype pollution");
+  run(R, 20, bots);
+  ok(tb.setup && tb.setup.id === id && tb.ui.ph !== "idle", "match carried on after junk");
+  ok(A.ev.filter((e) => e.type === "point").length >= 1, "points still scored after junk");
+  // a forged swing from a non-seated player, or for someone else's seat, never moves the host's match
+  const seatB = B.sess.mySeat(), seatA = A.sess.mySeat();
+  let swung = 0; const real = tb.match.swing.bind(tb.match); tb.match.swing = (...a) => { swung++; return real(...a); };
+  const ts = H.simNow(tb);
+  H.onMessage({ k: "sw", id, seat: seatA, i: { kind: "drive" }, ts }, "B");   // B plays A's seat
+  H.onMessage({ k: "sw", id, seat: seatB, i: { kind: "drive" }, ts }, "X");   // a stranger plays B's seat
+  H.onMessage({ k: "sw", id, seat: seatB, i: { kind: "drive" }, ts: ts + 50 }, "B");   // far-off timestamp
+  ok(swung === 0, "forged or stale swings are dropped (" + swung + " got through)");
+  // a stranger can't move a table on from its result card; a seated player can
+  tb.ui = { ph: "result" };
+  H.onMessage({ k: "adv", n: 0 }, "X");
+  ok(tb.ui.ph === "result", "a non-seated player can't advance a result card");
+  H.onMessage({ k: "adv", n: 0 }, "B");
+  ok(tb.ui.ph !== "result", "a seated player can: " + tb.ui.ph);
+  // a flood of hellos gets a few full states, not one each
+  let halls = 0; const send = A.net.send; A.net.send = (d, to) => { if (d && d.k === "hall") halls++; return send(d, to); };
+  for (let i = 0; i < 200; i++) H.onMessage({ k: "hi" }, "B");
+  ok(halls <= 1, "200 hellos at once get " + halls + " full state(s)");
+  A.net.send = send;
+  // only the host's messages change a client's state
+  const uiBefore = JSON.stringify(B.sess.tables[0].ui);
+  B.sess.onMessage({ k: "ui", n: 0, ui: { ph: "done" } }, "X");
+  B.sess.onMessage({ k: "hall", tables: [], opts: { mode: "tournament" } }, "B");
+  ok(JSON.stringify(B.sess.tables[0].ui) === uiBefore && B.sess.setup, "a client ignores state from anyone but the host");
+}
 console.log(fail ? fail + " FAILED of " + n : "ALL PASS (" + n + " checks)");
 process.exit(fail ? 1 : 0);

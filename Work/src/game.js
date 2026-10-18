@@ -374,11 +374,18 @@ export class Session {
   onMessage(d, from) {
     if (!d || typeof d !== "object") return;
     if (this.isHost) {
-      if (d.k === "hi") this.broadcastFull(from);
-      else if (d.k === "sw") this.hostSwing(d, from);
+      if (d.k === "hi") {
+        // One full state per sender per 0.4 s (clients ask at most every 0.5 s): a flood of hellos can't flood the relay back.
+        this.hiAt = this.hiAt || new Map();
+        if (this.t - (this.hiAt.get(from) ?? -1) < 0.4) return;
+        this.hiAt.set(from, this.t);
+        this.broadcastFull(from);
+      } else if (d.k === "sw") this.hostSwing(d, from);
       else if (d.k === "adv") {
         const tb = this.tables[d.n | 0];
-        if (tb && (tb.ui.ph === "result" || tb.ui.ph === "bracket" || tb.ui.ph === "done")) this.advance(tb.n);
+        // A result card is only the seated players' to move on; the bracket and the final card are everyone's.
+        const mine = tb && (tb.ui.ph === "result" ? tb.has(from) : tb.ui.ph === "bracket" || tb.ui.ph === "done");
+        if (mine) this.advance(tb.n);
       }
       return;
     }

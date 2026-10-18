@@ -303,7 +303,7 @@ async function boot() {
   A.loadTracks();
   HUD.init({ advance: () => S.advance(), leave: () => { if (HL) HL.exit(); else location.reload(); } });
   if (HL) {
-    HL.on("message", (d, from) => S.onMessage(d, from));
+    HL.on("message", (d, from) => { try { S.onMessage(d, from); } catch (err) { console.warn("bad message from", from, err); } });
     HL.on("host", () => { if (HL.isHost) S.becameHost(); });
     HL.on("state", (st) => S.restore(st));
     HL.on("relay", (status) => { if (status === "open") S.hello(); });
