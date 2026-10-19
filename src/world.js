@@ -307,7 +307,7 @@ function buildWalls(tx) {
     g.save(); g.translate(170, h / 2); hopSymbol(g, 150); g.restore();
     g.font = "900 140px Impact, Arial Black, sans-serif"; g.textBaseline = "middle";
     const tg = g.createLinearGradient(330, 0, w, 0); tg.addColorStop(0, "#c4f35b"); tg.addColorStop(1, "#ffb84a");
-    g.fillStyle = tg; g.fillText("HOP PONG", 330, h / 2 - 40);
+    g.fillStyle = tg; g.fillText("RALLY HALL", 330, h / 2 - 40);
     g.fillStyle = "#e9eefc"; g.font = "700 54px system-ui, sans-serif"; g.fillText("OPEN  ·  8 TABLES", 336, h / 2 + 80);
   }, tx);
   const scrBox = new THREE.Mesh(new THREE.BoxGeometry(8.4, 3.9, 0.5), std(0x111522, { metalness: 0.5, roughness: 0.5 }));
@@ -436,7 +436,7 @@ function buildCourts(tx) {
     const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, "#1b3b72"); gr.addColorStop(1, "#11285a");
     g.fillStyle = gr; g.fillRect(0, 0, w, h); g.fillStyle = "#ffffff"; g.fillRect(0, h - 26, w, 6);
     const tg = g.createLinearGradient(0, 0, w, 0); tg.addColorStop(0, "#c4f35b"); tg.addColorStop(1, "#ffb84a");
-    g.fillStyle = tg; g.font = "900 96px Impact, Arial Black, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("HOP PONG", w / 2, h * 0.44);
+    g.fillStyle = tg; g.font = "900 96px Impact, Arial Black, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("RALLY HALL", w / 2, h * 0.44);
   }, tx);
   const badgeBoard = canvasTex(512, 256, (g, w, h) => {
     const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, "#1b3b72"); gr.addColorStop(1, "#11285a");

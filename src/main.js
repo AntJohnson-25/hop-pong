@@ -1,4 +1,4 @@
-// Hop Pong: boot, HopLobby wiring (menu, graphics, settings, relay), the frame loop and the effects.
+// Rally Hall: boot, HopLobby wiring (menu, graphics, settings, relay), the frame loop and the effects.
 import { W } from "./world.js";
 import { Person } from "./people.js";
 import { Session } from "./game.js";
@@ -19,7 +19,9 @@ export const LOBBY_OPTIONS = [
   { key: "points", label: { en: "Game to", "pt-PT": "Jogo até" }, type: "choice", default: 11,
     choices: [{ value: 7, label: "7" }, { value: 11, label: "11" }, { value: 21, label: "21" }] },
   { key: "ai", label: { en: "Computer skill", "pt-PT": "Nível do computador" }, type: "choice", default: "rising",
-    choices: [{ value: "easy", label: "Easy" }, { value: "medium", label: "Medium" }, { value: "hard", label: "Hard" }, { value: "rising", label: "Rising (tougher each round)" }] }
+    choices: [{ value: "easy", label: "Easy" }, { value: "medium", label: "Medium" }, { value: "hard", label: "Hard" }, { value: "rising", label: "Rising (tougher each round)" }] },
+  { key: "play", label: { en: "Play", "pt-PT": "Jogar" }, type: "choice", default: "together",
+    choices: [{ value: "together", label: "Together (online)" }, { value: "solo", label: "Solo vs computer (no lag)" }] }
 ];
 
 const GFX = {
@@ -47,6 +49,20 @@ function makeNet(ctx) {
     players: () => (HL && HL.players && HL.players.length ? HL.players.map((p) => ({ id: p.id, name: p.name })) : [{ id: me, name: t("you") }]),
     now: hlNow,
     send: (d, to) => (HL ? HL.send(d, to) : false)
+  };
+}
+
+// Solo: this player's own game against the computer, run right here: no relay, no host, no lag.
+// (Every player in a "solo" lobby does the same, each at their own table.)
+function makeSoloNet(ctx) {
+  const me = ctx.playerId || "me";
+  const mine = HL && HL.players && HL.players.find((p) => p.id === me);
+  return {
+    me, standalone: true, hostId: me,
+    isHost: () => true,
+    players: () => [{ id: me, name: (mine && mine.name) || t("you") }],
+    now: hlNow,
+    send: () => false
   };
 }
 
@@ -245,7 +261,7 @@ function autoPlay(v) {
 // ---------------------------------------------------------------------------- boot
 async function boot() {
   HUD.progress(0.05, t("loading"));
-  const defaults = { mode: Q.get("mode") || "singles", points: +(Q.get("points") || 11), ai: Q.get("ai") || "rising" };
+  const defaults = { mode: Q.get("mode") || "singles", points: +(Q.get("points") || 11), ai: Q.get("ai") || "rising", play: Q.get("play") || "together" };
   let ctx;
   if (HL) {
     try { ctx = await HL.init({ build: "0.1.0", lobbyOptions: LOBBY_OPTIONS, options: defaults }); } catch (err) { console.warn("HopLobby.init failed", err); }
@@ -290,8 +306,9 @@ async function boot() {
   }
 
   // The session
-  const net = makeNet(ctx);
   const o = ctx.options || defaults;
+  const solo = o.play === "solo";
+  const net = solo ? makeSoloNet(ctx) : makeNet(ctx);
   const S = state.S = new Session(net, { mode: o.mode || "singles", target: +o.points || 11, ai: o.ai || "rising" }, {
     onEvent, onUi,
     onSetup: (setup, fresh, n) => buildPeople(setup, fresh, n)
@@ -302,7 +319,7 @@ async function boot() {
   window.addEventListener("keydown", () => { A.unlock(); A.music("play"); }, { once: true });
   A.loadTracks();
   HUD.init({ advance: () => S.advance(), leave: () => { if (HL) HL.exit(); else location.reload(); } });
-  if (HL) {
+  if (HL && !solo) {
     HL.on("message", (d, from) => { try { S.onMessage(d, from); } catch (err) { console.warn("bad message from", from, err); } });
     HL.on("host", () => { if (HL.isHost) S.becameHost(); });
     HL.on("state", (st) => S.restore(st));
@@ -317,7 +334,7 @@ async function boot() {
   HUD.progress(1);
   HUD.hideLoading();
   if (HL) HL.ready();
-  if (!net.isHost()) S.hello();
+  if (!solo && !net.isHost()) S.hello();
   requestAnimationFrame((n) => { state.last = n; frame(n); });
   window.HP = { state, S, W, A };           // for the test rigs
 }
