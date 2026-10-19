@@ -1,6 +1,6 @@
 const fs = require("fs");
 const j = JSON.parse(fs.readFileSync("submission.json", "utf8"));
-const out = `# Hop Pong: HopLobby listing (draft, edit submission.json then re-run tools/make-listing.js)
+const out = `# Rally Hall: HopLobby listing (draft, edit submission.json then re-run tools/make-listing.js)
 
 Generated from submission.json so the two never drift. Portal limits in brackets.
 

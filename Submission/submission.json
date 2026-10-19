@@ -1,6 +1,6 @@
 {
   "_comment": "Arguments for the HopLobby MCP prepare_submission call (saves a DRAFT only; the user presses Submit on the portal). Keep in step with listing.md. Drop this _comment key before sending.",
-  "title": "Hop Pong",
+  "title": "Rally Hall",
   "gameId": "hop-pong",
   "tagline": "Table tennis for up to 16 players: singles, doubles or a knockout tournament, played as your own HopLobby avatar.",
   "genre": "sports",

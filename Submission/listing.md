@@ -1,10 +1,10 @@
-# Hop Pong: HopLobby listing (draft, edit submission.json then re-run tools/make-listing.js)
+# Rally Hall: HopLobby listing (draft, edit submission.json then re-run tools/make-listing.js)
 
 Generated from submission.json so the two never drift. Portal limits in brackets.
 
 ## Title (2-60)
 
-Hop Pong
+Rally Hall
 
 ## Game id (3-24, permanent once used)
 

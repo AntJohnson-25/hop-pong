@@ -1,5 +1,5 @@
 {
-  "title": "Hop Pong",
+  "title": "Rally Hall",
   "gameId": "hop-pong",
   "minPlayers": 1,
   "maxPlayers": 16,
@@ -19,6 +19,11 @@
         { "value": "medium", "label": "Medium" },
         { "value": "hard", "label": "Hard" },
         { "value": "rising", "label": "Rising (tougher each round)" }
+      ] },
+    { "key": "play", "label": { "en": "Play", "pt-PT": "Jogar" }, "type": "choice", "default": "together",
+      "choices": [
+        { "value": "together", "label": "Together (online)" },
+        { "value": "solo", "label": "Solo vs computer (no lag)" }
       ] }
   ],
   "leaderboards": [],
