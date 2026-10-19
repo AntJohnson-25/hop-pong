@@ -187,7 +187,7 @@ function onUi(ui, n) {
   if (n !== undefined && n !== S.focus().n) return;
   state.lastUi = ui;
   const mySide = S.mySeat() ? side(S.mySeat()) : null;
-  HUD.overlays(ui, { mySide, myId: S.net.me, tour: S.tour, busy: S.playing() });
+  HUD.overlays(ui, { mySide, myId: S.net.me, tour: S.tour, busy: S.playing(), managed: !!state.managed });
   Input.enabled = !ui || ui.ph === "play";
   if (ui && ui.ph === "result") A.music("results"); else A.music("play");
 }
@@ -308,11 +308,15 @@ async function boot() {
   // The session
   const o = ctx.options || defaults;
   const solo = o.play === "solo";
+  const managed = !!HL && !solo && !ctx.standalone;   // HopLobby runs the rematch
   const net = solo ? makeSoloNet(ctx) : makeNet(ctx);
   const S = state.S = new Session(net, { mode: o.mode || "singles", target: +o.points || 11, ai: o.ai || "rising" }, {
     onEvent, onUi,
-    onSetup: (setup, fresh, n) => buildPeople(setup, fresh, n)
+    onSetup: (setup, fresh, n) => buildPeople(setup, fresh, n),
+    // The round is over: HopLobby shows the results and runs the rematch (not in solo: each solo player has their own game).
+    onRoundEnd: (entries) => { if (managed && HL.isHost && entries.length) { try { HL.endGame({ title: "Rally Hall", entries }); } catch (err) { console.warn("endGame", err); } } }
   });
+  state.managed = managed;
   S.net = net;
   Input.init($("view"), $("swipe"), (intent) => { A.unlock(); S.swing(intent); });
   window.addEventListener("pointerdown", () => { A.unlock(); A.music("play"); }, { once: true });
