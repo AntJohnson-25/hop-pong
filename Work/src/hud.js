@@ -54,7 +54,8 @@ HUD.overlays = function (ui, ctx) {
     const rowC = row(r.seats.filter((s) => s.seat[0] === "c").map((s) => s.name).join(" & "), r.sc[1], r.winner === "c");
     $("resBody").append(rowP, rowC);
     $("resAgain").textContent = t("again"); $("resLeave").textContent = t("leave");
-    $("resAgain").hidden = false;
+    // Inside a HopLobby lobby the rematch is HopLobby's (platform rule): no play-again of our own.
+    $("resAgain").hidden = !!ctx.managed;
     rs.hidden = false;
   } else if ((ui.ph === "bracket" || ui.ph === "done") && ctx.tour) {
     const tour = ctx.tour;
@@ -85,7 +86,7 @@ HUD.overlays = function (ui, ctx) {
     const others = ui.ph === "bracket" && ctx.busy > 0;
     $("brNote").textContent = ui.ph === "done" ? (tour.champion === ctx.myId ? t("youChamp") : "") : others ? t("othersPlaying", ctx.busy) : (out ? t("eliminated") : mine ? "" : "");
     $("brGo").textContent = ui.ph === "done" ? t("again") : t("continue");
-    $("brGo").hidden = others;
+    $("brGo").hidden = others || (ui.ph === "done" && !!ctx.managed);
     br.hidden = false;
   }
 };

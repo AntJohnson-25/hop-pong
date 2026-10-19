@@ -162,7 +162,7 @@ export class Session {
   // four in doubles, the computer filling the empty seats.
   begin() {
     if (!this.isHost) return;
-    this.begun = true;
+    this.begun = true; this.roundEnded = false;
     this.syncQueue();
     this.tables.forEach((tb) => this.clearTable(tb));
     if (this.opts.mode === "tournament") {
@@ -202,6 +202,36 @@ export class Session {
     const tbs = this.tables.filter((tb) => tb.setup);
     tbs.forEach((tb) => { tb.match = null; tb.ui = { ph: "done" }; this.cb.onUi && this.cb.onUi(tb.ui, tb.n); });
     this.broadcastFull();
+    this.endRound();
+  }
+
+  // HopLobby runs the rematch (platform rule): when every game of the round is over the host hands
+  // the results to the app (main.js calls HopLobby.endGame), and HopLobby opens its rematch window.
+  // A round is a tournament, or one game at each table that's in use.
+  endRound() {
+    if (this.roundEnded || !this.isHost) return;
+    this.roundEnded = true;
+    const entries = [];
+    if (this.tour) {
+      const rounds = T.roundsOf(this.tour).length;
+      this.tour.draw.forEach((e) => {
+        if (!e.human || !e.id) return;
+        const r = T.eliminated(this.tour, e.id);
+        const champ = this.tour.champion === e.id;
+        entries.push({ playerId: e.id, place: champ ? 1 : 2 + (rounds - 1 - Math.max(0, r)), label: champ ? "Champion" : undefined });
+      });
+    } else {
+      this.tables.forEach((tb) => {
+        const res = tb.ui && tb.ui.res;
+        if (!res) return;
+        res.seats.forEach((s) => {
+          if (!s.id) return;
+          const won = s.seat[0] === res.winner;
+          entries.push({ playerId: s.id, place: won ? 1 : 2, score: res.sc[s.seat[0] === "p" ? 0 : 1], label: won ? "Won" : "Lost" });
+        });
+      });
+    }
+    this.cb.onRoundEnd && this.cb.onRoundEnd(entries);
   }
 
   setUi(tb, ui) {
@@ -276,6 +306,8 @@ export class Session {
       evs.forEach((e) => tb.evBuf.push(this.packEvent(e)));
       this.handleEvents(tb, evs);
     }
+    // A casual round is over once every table's game has finished.
+    if (!this.tour && !this.roundEnded && !this.playing() && this.tables.some((tb) => tb.ui.ph === "result")) this.endRound();
     this.sendT += dt;
     if (this.sendT >= SEND_EVERY) { this.sendT = 0; this.sendSnapshot(); }
     this.noteLeavers();
