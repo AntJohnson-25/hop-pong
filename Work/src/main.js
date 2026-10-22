@@ -1,6 +1,6 @@
 // Rally Hall: boot, HopLobby wiring (menu, graphics, settings, relay), the frame loop and the effects.
 import { W } from "./world.js";
-import { Person } from "./people.js";
+import { Person, loadAvatarBuffer } from "./people.js";
 import { Session } from "./game.js";
 import { Input } from "./input.js";
 import { HUD } from "./hud.js";
@@ -19,9 +19,7 @@ export const LOBBY_OPTIONS = [
   { key: "points", label: { en: "Game to", "pt-PT": "Jogo até" }, type: "choice", default: 11,
     choices: [{ value: 7, label: "7" }, { value: 11, label: "11" }, { value: 21, label: "21" }] },
   { key: "ai", label: { en: "Computer skill", "pt-PT": "Nível do computador" }, type: "choice", default: "rising",
-    choices: [{ value: "easy", label: "Easy" }, { value: "medium", label: "Medium" }, { value: "hard", label: "Hard" }, { value: "rising", label: "Rising (tougher each round)" }] },
-  { key: "play", label: { en: "Play", "pt-PT": "Jogar" }, type: "choice", default: "together",
-    choices: [{ value: "together", label: "Together (online)" }, { value: "solo", label: "Solo vs computer (no lag)" }] }
+    choices: [{ value: "easy", label: "Easy" }, { value: "medium", label: "Medium" }, { value: "hard", label: "Hard" }, { value: "rising", label: "Rising (tougher each round)" }] }
 ];
 
 const GFX = {
@@ -33,12 +31,21 @@ const GFX = {
 };
 
 // persons: the people at your table (state.people[focus]); people[n] = { persons, sig } per table.
-const state = { S: null, people: [], persons: {}, focus: -1, mySeat: null, prefs: { ring: true, hudScale: 1, swipe: 1 }, last: 0, hudKey: "", hints: 0, serves: 0, wait: false, lastUi: null, auto: Q.has("auto") };
+const state = { S: null, people: [], persons: {}, focus: -1, mySeat: null, prefs: { ring: true, hudScale: 1, swipe: 1 }, last: 0, hudKey: "", hints: 0, serves: 0, wait: false, lastUi: null, paused: false, auto: Q.has("auto") };
 
 // ---------------------------------------------------------------------------- HopLobby (or a stub)
 const inLobby = typeof HopLobby !== "undefined";
 const HL = inLobby ? HopLobby : null;
 function hlNow() { return HL && HL.now ? HL.now() : Date.now(); }
+
+// The round's players: HopLobby's roster (who readied up, plus late joiners it adds), or the whole lobby on a
+// page without sessions. Lobby members outside the roster wait in HopLobby's lobby: no seat, not in the results.
+function rosterPlayers() {
+  if (!HL || !HL.players || !HL.players.length) return null;
+  const s = HL.session && HL.session.get ? HL.session.get() : HL.context && HL.context.session;
+  const r = s && Array.isArray(s.roster) && s.roster.length ? s.roster : null;
+  return r ? HL.players.filter((p) => r.includes(p.id)) : HL.players;
+}
 
 function makeNet(ctx) {
   const me = ctx.playerId || "me";
@@ -46,23 +53,9 @@ function makeNet(ctx) {
     me, standalone: !!ctx.standalone,
     get hostId() { return HL && HL.context ? HL.context.hostId : me; },
     isHost: () => (HL ? !!HL.isHost : true),
-    players: () => (HL && HL.players && HL.players.length ? HL.players.map((p) => ({ id: p.id, name: p.name })) : [{ id: me, name: t("you") }]),
+    players: () => { const r = rosterPlayers(); return r ? r.map((p) => ({ id: p.id, name: p.name })) : [{ id: me, name: t("you") }]; },
     now: hlNow,
     send: (d, to) => (HL ? HL.send(d, to) : false)
-  };
-}
-
-// Solo: this player's own game against the computer, run right here: no relay, no host, no lag.
-// (Every player in a "solo" lobby does the same, each at their own table.)
-function makeSoloNet(ctx) {
-  const me = ctx.playerId || "me";
-  const mine = HL && HL.players && HL.players.find((p) => p.id === me);
-  return {
-    me, standalone: true, hostId: me,
-    isHost: () => true,
-    players: () => [{ id: me, name: (mine && mine.name) || t("you") }],
-    now: hlNow,
-    send: () => false
   };
 }
 
@@ -187,8 +180,8 @@ function onUi(ui, n) {
   if (n !== undefined && n !== S.focus().n) return;
   state.lastUi = ui;
   const mySide = S.mySeat() ? side(S.mySeat()) : null;
-  HUD.overlays(ui, { mySide, myId: S.net.me, tour: S.tour, busy: S.playing(), managed: !!state.managed });
-  Input.enabled = !ui || ui.ph === "play";
+  HUD.overlays(ui, { mySide, myId: S.net.me, tour: S.tour, busy: S.playing() });
+  Input.enabled = !state.paused && (!ui || ui.ph === "play");
   if (ui && ui.ph === "result") A.music("results"); else A.music("play");
 }
 
@@ -261,7 +254,7 @@ function autoPlay(v) {
 // ---------------------------------------------------------------------------- boot
 async function boot() {
   HUD.progress(0.05, t("loading"));
-  const defaults = { mode: Q.get("mode") || "singles", points: +(Q.get("points") || 11), ai: Q.get("ai") || "rising", play: Q.get("play") || "together" };
+  const defaults = { mode: Q.get("mode") || "singles", points: +(Q.get("points") || 11), ai: Q.get("ai") || "rising" };
   let ctx;
   if (HL) {
     try { ctx = await HL.init({ build: "0.1.0", lobbyOptions: LOBBY_OPTIONS, options: defaults }); } catch (err) { console.warn("HopLobby.init failed", err); }
@@ -287,11 +280,11 @@ async function boot() {
           { key: "hudScale", label: { en: t("s_hudScale"), "pt-PT": "Tamanho do ecrã" }, type: "range", min: 0.8, max: 1.4, step: 0.05, default: 1 }
         ],
         controls: [
-          { title: "Swing", keys: [{ keys: ["Space"], action: "Drive (topspin)" }, { keys: ["Z"], action: "Push (backspin)" }, { keys: ["C"], action: "Lob" }, { keys: ["Space"], action: "Serve" }] },
-          { title: "Aim", keys: [{ keys: ["←", "→"], action: "Direction" }, { keys: ["↑", "↓"], action: "Depth" }, { keys: ["Shift"], action: "Hard hit" }] }
+          { title: "Swing", keys: [{ keys: ["Space", "Enter"], action: "Drive (topspin)" }, { keys: ["Z", "X"], action: "Push (backspin)" }, { keys: ["C"], action: "Lob" }, { keys: ["Space", "Enter"], action: "Serve" }] },
+          { title: "Aim", keys: [{ keys: ["←", "→"], action: "Direction" }, { keys: ["A", "D"], action: "Direction" }, { keys: ["↑", "↓"], action: "Depth" }, { keys: ["W", "S"], action: "Depth" }, { keys: ["Shift"], action: "Hard hit" }] }
         ],
         controlsNote: "You are moved to the ball for you. Time your swing to the ring: green is perfect. On a touchscreen: swipe up to hit, tap to push, swipe down to lob.",
-        shared: ["graphics", "audio", "touch"]
+        shared: ["graphics", "audio", "touch", "shake"]
       });
     } catch (err) { console.warn("menu.set", err); }
   }
@@ -300,30 +293,29 @@ async function boot() {
     HL.on("prefs", (p) => applyPrefs(p));
     HL.on("graphics", (g) => W.applyGraphics(g));
     HL.on("settings", (s) => applySettings(s));
-    HL.on("pause", () => { Input.enabled = false; });
-    HL.on("resume", () => { Input.enabled = !state.lastUi || state.lastUi.ph === "play"; });
+    HL.on("pause", () => { state.paused = true; Input.enabled = false; });
+    HL.on("resume", () => { state.paused = false; Input.enabled = !state.lastUi || state.lastUi.ph === "play"; });
     applySettings(HL.settings);
   }
 
   // The session
   const o = ctx.options || defaults;
-  const solo = o.play === "solo";
-  const managed = !!HL && !solo && !ctx.standalone;   // HopLobby runs the rematch
-  const net = solo ? makeSoloNet(ctx) : makeNet(ctx);
+  const net = makeNet(ctx);
   const S = state.S = new Session(net, { mode: o.mode || "singles", target: +o.points || 11, ai: o.ai || "rising" }, {
     onEvent, onUi,
     onSetup: (setup, fresh, n) => buildPeople(setup, fresh, n),
-    // The round is over: HopLobby shows the results and runs the rematch (not in solo: each solo player has their own game).
-    onRoundEnd: (entries) => { if (managed && HL.isHost && entries.length) { try { HL.endGame({ title: "Rally Hall", entries }); } catch (err) { console.warn("endGame", err); } } }
+    // The round is over: HopLobby shows the results and runs the rematch (no play-again of our own).
+    onRoundEnd: (entries) => { if (HL && HL.isHost && entries.length) { try { HL.endGame({ title: "Rally Hall", entries }); } catch (err) { console.warn("endGame", err); } } }
   });
-  state.managed = managed;
   S.net = net;
+  // The host's frame was reloaded mid-round: pick the hall back up from the other players instead of starting over.
+  if (HL && ctx.joinedLate && net.isHost()) S.awaitResume();
   Input.init($("view"), $("swipe"), (intent) => { A.unlock(); S.swing(intent); });
   window.addEventListener("pointerdown", () => { A.unlock(); A.music("play"); }, { once: true });
   window.addEventListener("keydown", () => { A.unlock(); A.music("play"); }, { once: true });
   A.loadTracks();
   HUD.init({ advance: () => S.advance(), leave: () => { if (HL) HL.exit(); else location.reload(); } });
-  if (HL && !solo) {
+  if (HL) {
     HL.on("message", (d, from) => { try { S.onMessage(d, from); } catch (err) { console.warn("bad message from", from, err); } });
     HL.on("host", () => { if (HL.isHost) S.becameHost(); });
     HL.on("state", (st) => S.restore(st));
@@ -333,12 +325,21 @@ async function boot() {
   }
 
   HUD.progress(0.8, t("loadChars"));
-  // Ready as soon as the room can be seen; the players load in behind the loading screen of the table.
+  // Every player's avatar, downloaded once before ready() (seats and tables reuse it). A slow one doesn't hold up
+  // the round: after 10 s it keeps loading behind the table's own loading card.
+  if (HL && !ctx.standalone) {
+    const ids = (rosterPlayers() || []).map((p) => p.id);
+    let done = 0;
+    await Promise.race([
+      Promise.all(ids.map((id) => loadAvatarBuffer(id).catch(() => null).then(() => HUD.progress(0.8 + 0.2 * (++done) / ids.length, t("loadChars"))))),
+      new Promise((ok) => setTimeout(ok, 10000))
+    ]);
+  }
   W.render();
   HUD.progress(1);
   HUD.hideLoading();
   if (HL) HL.ready();
-  if (!solo && !net.isHost()) S.hello();
+  if (!net.isHost()) S.hello();
   requestAnimationFrame((n) => { state.last = n; frame(n); });
   window.HP = { state, S, W, A };           // for the test rigs
 }
@@ -352,7 +353,7 @@ function applySettings(s) {
   if (!s) return;
   const a = s.audio || {};
   A.setVolumes({ master: a.master ?? 0.8, music: a.music ?? 0.6, sfx: a.sfx ?? 0.75, muted: !!a.muted });
-  if (s.shake === false || (HL && HL.device && HL.device.reducedMotion)) W.noShake = true;
+  W.noShake = s.shake === false || !!(HL && HL.device && HL.device.reducedMotion);
 }
 
 boot().catch((err) => { console.error(err); try { HUD.progress(0, String(err && err.message || err)); if (HL && HL.reportError) HL.reportError(err, "boot"); } catch (_) { /* nothing */ } });

@@ -20,6 +20,25 @@ export function loadBotBuffer(i) {
   if (!BUF[i]) BUF[i] = fetchBuf("assets/bot-" + i + ".glb", 0);
   return BUF[i];
 }
+// Each player's HopLobby avatar is downloaded once (main.js asks for the round's players before ready()) and
+// reused whenever they change seats or tables. A failed download is forgotten so the next try asks again.
+const AVATARS = {};
+export function loadAvatarBuffer(id) {
+  if (!AVATARS[id]) AVATARS[id] = HopLobby.avatar(id, { format: "glb" }).catch((err) => { delete AVATARS[id]; throw err; });
+  return AVATARS[id];
+}
+
+// Free what a character put on the GPU: geometry, materials and their textures.
+function disposeTree(obj) {
+  obj.traverse((o) => {
+    if (o.geometry && !o.isSprite) o.geometry.dispose();   // (sprites share one geometry)
+    if (!o.material) return;
+    [].concat(o.material).forEach((m) => {
+      for (const k in m) { const v = m[k]; if (v && v.isTexture) v.dispose(); }
+      m.dispose();
+    });
+  });
+}
 
 const _v = new THREE.Vector3(), _w = new THREE.Vector3(), _m = new THREE.Matrix4(), _q = new THREE.Quaternion();
 const ease = (x) => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
@@ -85,7 +104,7 @@ export class Person {
   // Fetch and build the character. Resolves when it is on screen (or has failed to a bot).
   load() {
     const useAvatar = this.human && this.hl && typeof HopLobby !== "undefined" && HopLobby.context && !HopLobby.context.standalone;
-    const get = useAvatar ? HopLobby.avatar(this.hl, { format: "glb" }) : loadBotBuffer(this.look % BOTS.length);
+    const get = useAvatar ? loadAvatarBuffer(this.hl) : loadBotBuffer(this.look % BOTS.length);
     return get.then((buf) => parseAvatar(buf)).then((e) => this.build(e, !useAvatar)).catch((err) => {
       // An avatar that will not load: fall back to a bot so the match can go on (the bot is only a stand-in).
       if (useAvatar && !this.fellBack) { this.fellBack = true; this.hl = null; return loadBotBuffer(this.look % BOTS.length).then(parseAvatar).then((e) => this.build(e, true)); }
@@ -94,6 +113,8 @@ export class Person {
   }
 
   build(e, bot) {
+    // Disposed while it loaded (the table changed): don't put it on screen, just free it.
+    if (this.disposed) { disposeTree(e.gltf.scene); return; }
     this.e = e;
     const scene = e.gltf.scene;
     this.root.add(scene);
@@ -215,7 +236,10 @@ export class Person {
   }
 
   dispose() {
+    this.disposed = true;
     this.scene.remove(this.root); this.scene.remove(this.paddle);
-    if (this.mixer) this.mixer.stopAllAction();
+    if (this.mixer) { this.mixer.stopAllAction(); this.mixer.uncacheRoot(this.mixer.getRoot()); }
+    disposeTree(this.root);
+    disposeTree(this.paddle);
   }
 }

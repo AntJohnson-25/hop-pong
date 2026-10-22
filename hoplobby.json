@@ -19,11 +19,6 @@
         { "value": "medium", "label": "Medium" },
         { "value": "hard", "label": "Hard" },
         { "value": "rising", "label": "Rising (tougher each round)" }
-      ] },
-    { "key": "play", "label": { "en": "Play", "pt-PT": "Jogar" }, "type": "choice", "default": "together",
-      "choices": [
-        { "value": "together", "label": "Together (online)" },
-        { "value": "solo", "label": "Solo vs computer (no lag)" }
       ] }
   ],
   "leaderboards": [],

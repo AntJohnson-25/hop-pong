@@ -221,7 +221,7 @@ function full(R, mode, count) {
     { k: "sw", id, seat: "constructor", i: {}, ts: 1 }, { k: "sw", id, seat: "p0", i: [], ts: 1e308 }, { k: "sw", id, seat: "p0", i: { kind: {}, aim: "a", depth: [], pace: null, curve: {} }, ts: -1e308 },
     { k: "sw", id: { a: 1 }, seat: ["p0"], i: "x", ts: {} }, { k: "adv", n: "x" }, { k: "adv", n: -5 }, { k: "adv", n: 1e12 }, { k: "adv", n: {} }, { k: "adv", n: [1] },
     { k: "hi", n: 1 }, { k: "hall", tables: "x" }, { k: "hall", tables: [null, 1, "a", { n: -1 }] }, { k: "ui", n: {}, ui: 1 }, { k: "st", tb: [null, { n: 99 }, "x"] },
-    { k: "st", tb: { length: 1e9 } }, { __proto__: { k: "adv" } }, JSON.parse('{"k":"sw","__proto__":{"x":1},"constructor":{"prototype":{"y":1}}}')
+    { k: "st", tb: { length: 1e9 } }, { __proto__: { k: "adv" } }, { k: "who" }, { k: "hallc", tables: "x" }, { k: "hallc", tables: [null, { n: 3, setup: 1 }] }, JSON.parse('{"k":"sw","__proto__":{"x":1},"constructor":{"prototype":{"y":1}}}')
   ];
   let threw = 0;
   for (const from of ["B", "X", "A"]) for (const m of junk) { try { H.onMessage(m, from); } catch (e) { threw++; console.log("host threw on", JSON.stringify(m).slice(0, 80), String(e)); } }
@@ -255,6 +255,60 @@ function full(R, mode, count) {
   B.sess.onMessage({ k: "ui", n: 0, ui: { ph: "done" } }, "X");
   B.sess.onMessage({ k: "hall", tables: [], opts: { mode: "tournament" } }, "B");
   ok(JSON.stringify(B.sess.tables[0].ui) === uiBefore && B.sess.setup, "a client ignores state from anyone but the host");
+}
+// 10) the host's frame reloads mid-round: it picks the hall up from the players, not a new game
+{
+  const R = makeRelay({ seed: 41 });
+  const A = mk(R, "A", "Ann", "singles"), B = mk(R, "B", "Bob", "singles");
+  run(R, 30, [bot(A), bot(B)]);
+  const id = B.sess.setup.id, before = B.sess.view(1 / 60).sc.slice();
+  // A reloads: a brand-new Session on the same seat in the lobby, told it joined late.
+  A.ev.length = 0;
+  A.sess = new Session(A.net, { mode: "singles", target: 7, ai: "easy" }, { onEvent: (e) => A.ev.push(e), onUi: () => {} });
+  A.sess.awaitResume();
+  run(R, 3, [bot(A), bot(B)]);
+  ok(A.sess.setup && A.sess.setup.id === id, "reloaded host carries on the same game: " + (A.sess.setup && A.sess.setup.id) + " vs " + id);
+  ok(B.sess.setup.id === id, "the client's game was not restarted");
+  ok(A.sess.mySeat() === "p0", "the host keeps its seat: " + A.sess.mySeat());
+  const after = A.sess.view(1 / 60).sc;
+  ok(after[0] + after[1] >= before[0] + before[1], "score carried over " + before + " -> " + after);
+  run(R, 20, [bot(A), bot(B)]);
+  ok(A.ev.filter((e) => e.type === "point").length >= 1, "points scored after the reload");
+}
+// 11) the round's roster: a lobby member who didn't ready up gets no seat and no result
+{
+  const R = makeRelay({ seed: 42 });
+  const A = mk(R, "A", "Ann", "singles"), B = mk(R, "B", "Bob", "singles"), C = mk(R, "C", "Cy", "singles");
+  // main.js hands Session the roster (HopLobby.session.roster), here A and B only
+  for (const c of [A, B, C]) c.net.players = () => R.players().filter((p) => p.id !== "C");
+  let entries = null;
+  A.sess.cb.onRoundEnd = (e) => { entries = e; };
+  run(R, 4, [bot(A), bot(B), bot(C)]);
+  ok(!C.sess.mySeat(), "C (not in the roster) has no seat: " + C.sess.mySeat());
+  ok(A.sess.active().length === 1, "one table for the two in the roster: " + A.sess.active().length);
+  let guard = 0;
+  while (guard++ < 40 && !entries) run(R, 10, [bot(A), bot(B)]);
+  ok(entries && entries.length === 2 && !entries.some((e) => e.playerId === "C"), "results only for the roster: " + JSON.stringify(entries));
+}
+// 12) the bracket only moves on for its own players, and never once the tournament is over
+{
+  const R = makeRelay({ seed: 43 });
+  const A = mk(R, "A", "Ann", "tournament"), B = mk(R, "B", "Bob", "tournament"), X = mk(R, "X", "Xan", "tournament");
+  const bots = [bot(A), bot(B), bot(X)];
+  let guard = 0;
+  while (guard++ < 60 && !A.sess.tables.some((tb) => tb.ui.ph === "bracket")) run(R, 5, bots);
+  const tb = A.sess.tables.find((t) => t.ui.ph === "bracket");
+  const outsider = ["A", "B", "X"].find((id) => !tb.has(id));
+  const before = JSON.stringify(A.sess.tables.map((t) => t.ui.ph));
+  if (outsider && outsider !== "A") A.sess.onMessage({ k: "adv", n: tb.n }, outsider);
+  ok(!outsider || outsider === "A" || JSON.stringify(A.sess.tables.map((t) => t.ui.ph)) === before, "a player from another table can't move this bracket on");
+  while (guard++ < 200 && A.sess.ui.ph !== "done") { run(R, 15, bots); if (!A.sess.playing() && A.sess.tables.some((t) => t.ui.ph === "bracket")) A.sess.advance(); }
+  ok(A.sess.ui.ph === "done", "tournament over");
+  const matchNo = A.sess.matchNo;
+  A.sess.onMessage({ k: "adv", n: A.sess.focus().n }, "B");
+  A.sess.advance();
+  run(R, 1, bots);
+  ok(A.sess.matchNo === matchNo && A.sess.ui.ph === "done", "no new tournament after it ends (HopLobby runs the rematch)");
 }
 console.log(fail ? fail + " FAILED of " + n : "ALL PASS (" + n + " checks)");
 process.exit(fail ? 1 : 0);
