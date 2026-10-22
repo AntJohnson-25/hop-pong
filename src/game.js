@@ -283,7 +283,8 @@ export class Session {
       if (!ids.length) { this.clearTable(tb); this.broadcastFull(); return; }
       this.startMatch(tb, this.makeSetup(tb, ids));
       this.broadcastFull();
-    } else if (ph === "done") this.begin();
+    }
+    // ph "done": the tournament is over and HopLobby runs the rematch. Nothing to do here.
   }
 
   // Lobby players with no seat at any table.
@@ -298,7 +299,16 @@ export class Session {
   update(dt) {
     this.t += dt;
     if (!this.isHost) { this.clientTick(dt); return; }
-    if (!this.begun) { if (this.net.players().length) this.begin(); return; }
+    if (!this.begun) {
+      // A reloaded host asks the players for the hall (once a second) for up to 4 s before starting a new one.
+      if (this.resuming && this.t < 4) {
+        if (this.t - (this.whoT ?? -9) >= 1) { this.whoT = this.t; this.net.send({ k: "who" }); }
+        return;
+      }
+      this.resuming = false;
+      if (this.net.players().length) this.begin();
+      return;
+    }
     for (const tb of this.tables) {
       if (!tb.match || tb.ui.ph !== "play") continue;
       tb.match.update(dt);
@@ -327,9 +337,11 @@ export class Session {
       let changed = false;
       for (const s of tb.setup.seats) {
         if (s.human && !ids.includes(s.id)) {
+          const gone = s.id;
           s.human = false; s.id = null;
           if (tb.match && tb.ui.ph === "play") tb.match.convertToAI(s.seat, s.level || "medium");
-          if (this.tour) { const e = this.tour.draw.find((d) => d.name === s.name); if (e) e.human = false; }
+          // (by id: two players may share a name)
+          if (this.tour) { const e = this.tour.draw.find((d) => d.human && d.id === gone); if (e) e.human = false; }
           changed = true;
         }
       }
@@ -415,13 +427,22 @@ export class Session {
       } else if (d.k === "sw") this.hostSwing(d, from);
       else if (d.k === "adv") {
         const tb = this.tables[d.n | 0];
-        // A result card is only the seated players' to move on; the bracket and the final card are everyone's.
-        const mine = tb && (tb.ui.ph === "result" ? tb.has(from) : tb.ui.ph === "bracket" || tb.ui.ph === "done");
+        // Only the table's own players move it on: a result card's seated players, or a bracket table's players
+        // while the tournament is still running. Never once it's over (HopLobby runs the rematch).
+        const mine = tb && tb.has(from) && (tb.ui.ph === "result" || (tb.ui.ph === "bracket" && this.tour && !this.tour.champion));
         if (mine) this.advance(tb.n);
+      } else if (d.k === "hallc" && this.resuming && !this.begun && this.humanIds().includes(from)) {
+        // We reloaded mid-round: a player's copy of the hall. Carry on from it (becameHost rebuilds the matches).
+        try {
+          this.applyHall(d);
+          this.resuming = false;
+          this.becameHost();
+        } catch (err) { console.warn("resume", err); }
       }
       return;
     }
     if (from !== this.net.hostId) return;
+    if (d.k === "who") { if (this.tables.some((tb) => tb.setup)) this.net.send(Object.assign({ k: "hallc" }, this.hallState()), from); return; }
     if (d.k === "hall") this.applyHall(d);
     else if (d.k === "ui") {
       const tb = this.tables[d.n | 0]; if (!tb || !d.ui) return;
@@ -560,6 +581,9 @@ export class Session {
     this.noteLeavers();
     this.broadcastFull();
   }
+
+  // This host's frame was reloaded mid-round (HopLobby context.joinedLate): wait for a player's copy of the hall.
+  awaitResume() { this.resuming = true; }
 
   // What a late joiner / reloader needs.
   stateFor() { return this.tables.some((tb) => tb.setup) ? this.hallState() : undefined; }

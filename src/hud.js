@@ -8,7 +8,6 @@ export const HUD = { timers: {} };
 HUD.init = function (h) {
   HUD.h = h;      // { advance(), leave() }
   $("brGo").onclick = () => h.advance();
-  $("resAgain").onclick = () => h.advance();
   $("resLeave").onclick = () => h.leave();
 };
 
@@ -53,9 +52,8 @@ HUD.overlays = function (ui, ctx) {
     const rowP = row(r.seats.filter((s) => s.seat[0] === "p").map((s) => s.name).join(" & "), r.sc[0], r.winner === "p");
     const rowC = row(r.seats.filter((s) => s.seat[0] === "c").map((s) => s.name).join(" & "), r.sc[1], r.winner === "c");
     $("resBody").append(rowP, rowC);
-    $("resAgain").textContent = t("again"); $("resLeave").textContent = t("leave");
-    // Inside a HopLobby lobby the rematch is HopLobby's (platform rule): no play-again of our own.
-    $("resAgain").hidden = !!ctx.managed;
+    // The rematch is HopLobby's (platform rule): no play-again of our own.
+    $("resLeave").textContent = t("leave");
     rs.hidden = false;
   } else if ((ui.ph === "bracket" || ui.ph === "done") && ctx.tour) {
     const tour = ctx.tour;
@@ -85,8 +83,9 @@ HUD.overlays = function (ui, ctx) {
     const out = tour && T.eliminated(tour, ctx.myId) >= 0;
     const others = ui.ph === "bracket" && ctx.busy > 0;
     $("brNote").textContent = ui.ph === "done" ? (tour.champion === ctx.myId ? t("youChamp") : "") : others ? t("othersPlaying", ctx.busy) : (out ? t("eliminated") : mine ? "" : "");
-    $("brGo").textContent = ui.ph === "done" ? t("again") : t("continue");
-    $("brGo").hidden = others || (ui.ph === "done" && !!ctx.managed);
+    // "Continue" moves the bracket on; when the tournament is done HopLobby's rematch takes over.
+    $("brGo").textContent = t("continue");
+    $("brGo").hidden = others || ui.ph === "done";
     br.hidden = false;
   }
 };

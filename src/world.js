@@ -718,7 +718,7 @@ W.placeCamera = function (me, dt) {
   const high = W.portrait ? 2.5 : 2.85, back = W.portrait ? 5.0 : 5.3;
   cam.position.set(W.camOff.x + W.camX * s * 0.9, high, W.camOff.z + s * back);
   const look = new THREE.Vector3(W.camOff.x + W.camX * s * 0.5, W.portrait ? 0.9 : 0.5, W.camOff.z - s * (W.portrait ? 1.6 : 0.8));
-  if (W.shake > 0.001) {
+  if (W.shake > 0.001 && !W.noShake) {
     cam.position.x += (Math.random() - 0.5) * W.shake; cam.position.y += (Math.random() - 0.5) * W.shake;
     W.shake *= Math.pow(0.001, dt);
   }
