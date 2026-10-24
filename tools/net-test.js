@@ -239,12 +239,12 @@ function full(R, mode, count) {
   H.onMessage({ k: "sw", id, seat: seatB, i: { kind: "drive" }, ts }, "X");   // a stranger plays B's seat
   H.onMessage({ k: "sw", id, seat: seatB, i: { kind: "drive" }, ts: ts + 50 }, "B");   // far-off timestamp
   ok(swung === 0, "forged or stale swings are dropped (" + swung + " got through)");
-  // a stranger can't move a table on from its result card; a seated player can
+  // result cards are final: nobody restarts a table from one (HopLobby runs the rematch)
   tb.ui = { ph: "result" };
+  const matchNoBefore = H.matchNo;
   H.onMessage({ k: "adv", n: 0 }, "X");
-  ok(tb.ui.ph === "result", "a non-seated player can't advance a result card");
   H.onMessage({ k: "adv", n: 0 }, "B");
-  ok(tb.ui.ph !== "result", "a seated player can: " + tb.ui.ph);
+  ok(tb.ui.ph === "result" && H.matchNo === matchNoBefore, "adv never restarts a table from its result card: " + tb.ui.ph);
   // a flood of hellos gets a few full states, not one each
   let halls = 0; const send = A.net.send; A.net.send = (d, to) => { if (d && d.k === "hall") halls++; return send(d, to); };
   for (let i = 0; i < 200; i++) H.onMessage({ k: "hi" }, "B");
@@ -266,7 +266,7 @@ function full(R, mode, count) {
   A.ev.length = 0;
   A.sess = new Session(A.net, { mode: "singles", target: 7, ai: "easy" }, { onEvent: (e) => A.ev.push(e), onUi: () => {} });
   A.sess.awaitResume();
-  run(R, 3, [bot(A), bot(B)]);
+  run(R, 6, [bot(A), bot(B)]);   // one player's copy only: taken once the 4 s wait is up
   ok(A.sess.setup && A.sess.setup.id === id, "reloaded host carries on the same game: " + (A.sess.setup && A.sess.setup.id) + " vs " + id);
   ok(B.sess.setup.id === id, "the client's game was not restarted");
   ok(A.sess.mySeat() === "p0", "the host keeps its seat: " + A.sess.mySeat());
@@ -274,6 +274,35 @@ function full(R, mode, count) {
   ok(after[0] + after[1] >= before[0] + before[1], "score carried over " + before + " -> " + after);
   run(R, 20, [bot(A), bot(B)]);
   ok(A.ev.filter((e) => e.type === "point").length >= 1, "points scored after the reload");
+}
+// 10b) a forged hall copy from a player can't make up results, players or options
+{
+  const R = makeRelay({ seed: 43 });
+  const A = mk(R, "A", "Ann", "singles"), B = mk(R, "B", "Bob", "singles");
+  run(R, 2, [bot(A), bot(B)]);
+  const mkHost = () => { const s = new Session(A.net, { mode: "singles", target: 7, ai: "easy" }, { onEvent: () => {}, onUi: () => {} }); s.awaitResume(); return s; };
+  const seat = (id, n, h) => ({ seat: h, id, human: !!id, name: n, level: "hard", look: 1 });
+  const good = (over) => Object.assign({ k: "hallc", opts: { mode: "tournament", target: 99 }, tour: { champion: "B" }, tables: [{
+    n: 0, setup: { id: 5, n: 0, target: 99, seats: [seat("A", "Ann", "p0"), seat("B", "Bob", "c0")] }, ui: { ph: "play" }, sc: [500, -3] }] }, over);
+  let H = mkHost();
+  H.onMessage(good(), "B");
+  H.update(5);
+  ok(H.opts.mode === "singles" && H.opts.target === 7, "a hall copy can't change the options: " + JSON.stringify(H.opts));
+  ok(H.tour === null, "a hall copy can't bring a bracket");
+  ok(H.tables[0].setup && H.tables[0].setup.target === 7, "target comes from the session, not the copy");
+  const sc = H.tables[0].lastSc;
+  ok(sc[0] <= 6 && sc[1] === 0, "scores clamped below the target: " + sc);
+  H = mkHost();
+  H.onMessage(good({ tables: [{ n: 0, setup: good().tables[0].setup, ui: { ph: "result", res: { winner: "p" } }, sc: [7, 3] }] }), "B");
+  H.update(5);
+  ok(H.tables.every((tb) => !tb.setup || tb.ui.ph === "play"), "finished tables in a copy are dropped");
+  H = mkHost();
+  H.onMessage(good({ tables: [{ n: 0, setup: { id: 5, seats: [seat("Z", "Zed", "p0"), seat("Q", "Quin", "c0")] }, ui: { ph: "play" }, sc: [1, 1] }] }), "B");
+  H.update(5);
+  ok(H.tables.every((tb) => tb.humans().every((s) => ["A", "B"].includes(s.id))), "seats of strangers in a copy are not taken");
+  H = mkHost();
+  H.onMessage(good(), "X");
+  ok(!H.hallReplies, "a copy from outside the lobby is ignored");
 }
 // 11) the round's roster: a lobby member who didn't ready up gets no seat and no result
 {

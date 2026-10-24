@@ -100,7 +100,25 @@ retargeting) or the Mixamo clip pipeline; the HopLobby avatar has its own 19-bon
 
 ## Next action
 
-Dev Mode test with the user (prepare_dev_mode, serve Work on 127.0.0.1), then fix what real avatars/phones show; then credits/HANDOFF, cover, listing, demo repo, submission. (Old plan: scaffold `Work/` (index.html,
+**2026-10-22: second review = changes requested. Paused by the user; nothing started.** Open items (submission
+010a9278-8d54-4da3-8f7f-8a1bfa4d77c4):
+
+Must fix
+1. Host reload catch-up trusts any player: `hallc` is applied wholesale, so a player can send finished tables with
+   made-up results and the host reports them via endGame. Take options from ctx.options, accept only roster ids,
+   only tables in 'play' (drop res/done), type-check and clamp scores below the target; ideally wait for two
+   matching replies.
+2. The rematch branch in advance() for ph 'result' (game.js:276-286) is still reachable via 'adv': it restarts a
+   table without endGame and holds off the round's end. Remove it: result cards are final.
+
+Should fix
+3. noteLeavers opens a table for a late joiner after the round has ended (game.js:368-371). Skip that once
+   roundEnded is set.
+4. Remove window.HP and ?auto from the build.
+
+Then push main + gh-pages and prepare_submission with the submissionId (the user presses Submit).
+
+Older plan: Dev Mode test with the user (prepare_dev_mode, serve Work on 127.0.0.1), then fix what real avatars/phones show; then credits/HANDOFF, cover, listing, demo repo, submission. (Old plan: scaffold `Work/` (index.html,
 vendored three, SDK init/progress/ready, menu.set, graphics), port the pure logic + tests, build the
 table, ball, paddle and an avatar test rig.
 

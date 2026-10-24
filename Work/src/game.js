@@ -273,18 +273,7 @@ export class Session {
     if (!tb) return;
     const ph = tb.ui.ph;
     if (ph === "bracket") { if (!this.playing()) this.startRound(); }
-    else if (ph === "result") {
-      // A rematch at the same table, with anyone waiting for a seat.
-      this.syncQueue();
-      const order = tb.setup.doubles ? SEAT_ORDER : ["p0", "c0"];
-      const ids = order.map((seat) => { const s = tb.setup.seats.find((x) => x.seat === seat); return s && s.human && this.queue.includes(s.id) ? s.id : null; }).filter(Boolean);
-      const per = order.length;
-      for (const id of this.waiting()) if (ids.length < per) ids.push(id);
-      if (!ids.length) { this.clearTable(tb); this.broadcastFull(); return; }
-      this.startMatch(tb, this.makeSetup(tb, ids));
-      this.broadcastFull();
-    }
-    // ph "done": the tournament is over and HopLobby runs the rematch. Nothing to do here.
+    // ph "result" and "done" are final: HopLobby runs the rematch.
   }
 
   // Lobby players with no seat at any table.
@@ -306,6 +295,9 @@ export class Session {
         return;
       }
       this.resuming = false;
+      // No two copies agreed (a lobby of two has only one to give): take the first, as rebuilt by cleanHall.
+      const first = this.hallReplies && this.hallReplies.values().next().value;
+      if (first) { this.resumeFrom(first); return; }
       if (this.net.players().length) this.begin();
       return;
     }
@@ -349,7 +341,7 @@ export class Session {
       if (changed && !this.tour && !tb.humans().length) { this.clearTable(tb); this.broadcastFull(); continue; }
       if (changed) { this.cb.onSetup && this.cb.onSetup(tb.setup, false, tb.n); this.broadcastFull(); }
     }
-    if (this.opts.mode === "tournament") return;
+    if (this.opts.mode === "tournament" || this.roundEnded) return;
     for (const id of this.waiting()) {
       let best = null;
       for (const tb of this.tables) {
@@ -427,16 +419,22 @@ export class Session {
       } else if (d.k === "sw") this.hostSwing(d, from);
       else if (d.k === "adv") {
         const tb = this.tables[d.n | 0];
-        // Only the table's own players move it on: a result card's seated players, or a bracket table's players
-        // while the tournament is still running. Never once it's over (HopLobby runs the rematch).
-        const mine = tb && tb.has(from) && (tb.ui.ph === "result" || (tb.ui.ph === "bracket" && this.tour && !this.tour.champion));
+        // Only a bracket table's own players move it on, while the tournament is still running.
+        // Result cards are final (HopLobby runs the rematch).
+        const mine = tb && tb.has(from) && tb.ui.ph === "bracket" && this.tour && !this.tour.champion;
         if (mine) this.advance(tb.n);
       } else if (d.k === "hallc" && this.resuming && !this.begun && this.humanIds().includes(from)) {
-        // We reloaded mid-round: a player's copy of the hall. Carry on from it (becameHost rebuilds the matches).
+        // We reloaded mid-round: a player's copy of the hall. Never trusted as sent: it is rebuilt from
+        // what we can check (see cleanHall), and two matching copies start the resume at once.
         try {
-          this.applyHall(d);
-          this.resuming = false;
-          this.becameHost();
+          const clean = this.cleanHall(d);
+          if (!clean) return;
+          this.hallReplies = this.hallReplies || new Map();
+          this.hallReplies.set(from, clean);
+          const key = JSON.stringify(clean);
+          let same = 0;
+          for (const v of this.hallReplies.values()) if (JSON.stringify(v) === key) same++;
+          if (same >= 2) this.resumeFrom(clean);
         } catch (err) { console.warn("resume", err); }
       }
       return;
@@ -489,6 +487,50 @@ export class Session {
       this.cb.onUi && this.cb.onUi(tb.ui, tb.n);
     }
     this.tables.forEach((tb) => { if (!seen.has(tb.n)) this.clearTable(tb); });
+  }
+
+  // A reloaded host's rebuild of a player's copy of the hall: only tables still in play, only seats of the
+  // lobby's roster, options from this session (HopLobby's lobby options), scores whole numbers below the
+  // target. Results, finished tables and the bracket are dropped. Null if nothing usable is left.
+  cleanHall(d) {
+    if (!d || !Array.isArray(d.tables) || this.opts.mode === "tournament") return null;
+    const roster = this.humanIds();
+    const doubles = this.opts.mode === "doubles";
+    const order = doubles ? SEAT_ORDER : ["p0", "c0"];
+    const target = this.opts.target;
+    const score = (v) => (num(v, 1e4) ? Math.max(0, Math.min(target - 1, Math.floor(v))) : 0);
+    const used = new Set();
+    const tables = [];
+    for (const e of d.tables.slice(0, MAX_TABLES)) {
+      if (!e || typeof e !== "object" || !e.setup || typeof e.setup !== "object" || !e.ui || e.ui.ph !== "play") continue;
+      const n = e.n | 0;
+      if (n < 0 || n >= MAX_TABLES || tables.some((x) => x.n === n) || !Array.isArray(e.setup.seats)) continue;
+      const seats = [];
+      for (const seat of order) {
+        const s = e.setup.seats.find((x) => x && x.seat === seat);
+        if (!s) break;
+        const human = !!s.human && typeof s.id === "string" && roster.includes(s.id) && !used.has(s.id);
+        if (human) used.add(s.id);
+        seats.push({
+          seat, id: human ? s.id : null, human, name: human ? this.nameOf(s.id) : String(s.name || "Player").slice(0, 24),
+          level: LEVELS[s.level] ? s.level : "medium", look: num(s.look, 64) ? Math.max(0, s.look | 0) : 0
+        });
+      }
+      if (seats.length !== order.length || !seats.some((s) => s.human)) continue;
+      const id = num(e.setup.id, 1e9) ? Math.max(1, e.setup.id | 0) : 0;
+      if (!id) continue;
+      const sc = Array.isArray(e.sc) ? [score(e.sc[0]), score(e.sc[1])] : [0, 0];
+      tables.push({ n, setup: { id, n, mode: doubles ? "doubles" : "singles", doubles, target, seats, tour: null }, ui: { ph: "play" }, sc });
+    }
+    return tables.length ? { tables, tour: null } : null;
+  }
+
+  // We reloaded mid-round: carry on from the rebuilt hall (becameHost rebuilds the matches).
+  resumeFrom(clean) {
+    this.resuming = false;
+    this.hallReplies = null;
+    this.applyHall(clean);
+    this.becameHost();
   }
 
   applySnapshot(d) {
