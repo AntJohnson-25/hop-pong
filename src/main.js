@@ -31,7 +31,7 @@ const GFX = {
 };
 
 // persons: the people at your table (state.people[focus]); people[n] = { persons, sig } per table.
-const state = { S: null, people: [], persons: {}, focus: -1, mySeat: null, prefs: { ring: true, hudScale: 1, swipe: 1 }, last: 0, hudKey: "", hints: 0, serves: 0, wait: false, lastUi: null, paused: false, auto: Q.has("auto") };
+const state = { S: null, people: [], persons: {}, focus: -1, mySeat: null, prefs: { ring: true, hudScale: 1, swipe: 1 }, last: 0, hudKey: "", hints: 0, serves: 0, wait: false, lastUi: null, paused: false };
 
 // ---------------------------------------------------------------------------- HopLobby (or a stub)
 const inLobby = typeof HopLobby !== "undefined";
@@ -224,7 +224,6 @@ function frame(now) {
   if (pl && my && pl.seat === my && state.prefs.ring && S.ui.ph === "play") W.setRing(true, pl.cx, pl.cy, pl.cz, pl.tc - S.simNow());
   else W.setRing(false);
   hudTick(v);
-  if (state.auto) autoPlay(v);
   W.render();
 }
 
@@ -243,13 +242,6 @@ function hudTick(v) {
   if (!state.mySeat && S.ui.ph === "play" && !state.wait) HUD.wait(t("spectate")); else if (!state.wait) HUD.wait(null);
 }
 
-// ?auto=1: the computer plays your side too (headless screenshots and soak tests).
-function autoPlay(v) {
-  const S = state.S, seat = state.mySeat; if (!seat || S.ui.ph !== "play") return;
-  if (v.ph === "serve" && v.sv === seat && (!state.autoServe || performance.now() - state.autoServe > 1500)) { state.autoServe = performance.now(); S.swing({ kind: "serve", aim: Math.random() - 0.5, depth: 0.3 + Math.random() * 0.6, pace: 0.4 }); }
-  const pl = S.plan;
-  if (pl && pl.seat === seat && pl !== state.autoPlan && S.simNow() >= pl.tc - 0.01) { state.autoPlan = pl; S.swing({ kind: "drive", aim: Math.random() * 1.2 - 0.6, depth: 0.3 + Math.random() * 0.7, pace: 0.3 + Math.random() * 0.5 }); }
-}
 
 // ---------------------------------------------------------------------------- boot
 async function boot() {
@@ -341,7 +333,6 @@ async function boot() {
   if (HL) HL.ready();
   if (!net.isHost()) S.hello();
   requestAnimationFrame((n) => { state.last = n; frame(n); });
-  window.HP = { state, S, W, A };           // for the test rigs
 }
 
 function applyPrefs(p) {
